@@ -239,8 +239,10 @@ public sealed partial class ChamberGame : MonoBehaviour
         if(automatic && DebugHoldPatterns){phase=Phase.Rest;remaining=.1f;return;}
 #endif
         CapturePatternTiming();
+        botHazardRevision++;
         if(board.Width>3 && (requested==PatternKind.Collapse ||
             (automatic && elapsed>=nextCollapse&&!lava.Active&&!HasControlledPlayers))){
+            botCollapseAnnouncedAt=elapsed;
             remaining=RisingBoard.CollapseLead;phase=Phase.Collapse;board.Preview(0);
             sound.Latch(0,true);return;
         }
@@ -274,6 +276,7 @@ public sealed partial class ChamberGame : MonoBehaviour
         if(requested==PatternKind.Wave || (automatic && wave%7==2)){
             arrow.Clear();spikeOrder.Clear();onsets.Clear();budget=0;potion.Clear();
             tide.Plan(board,origin,Pressure,tideCasts++);
+            botWaveAnnouncedAt=elapsed;
             patternName=$"밀려오는 파도 · {tide.Columns}칸 · 옆으로 피하세요";
             phase=Phase.TideWarning;remaining=warningSeconds=PatternWarning(TidalWave.WarningSeconds);
             wave++;sound.WaveWarning();return;
@@ -297,6 +300,7 @@ public sealed partial class ChamberGame : MonoBehaviour
         if(useArrow){
             int pattern=requested==PatternKind.ArrowRows?7:requested==PatternKind.Arrow?variant:arrowCasts++%8;
             arrow.Plan(board,origin,horizontal,wave%4<2?1:-1,pattern,exits,Pressure);
+            botArrowAnnouncedAt=elapsed;
             patternName=new[]{"화살 · 단발","화살 · 왕복","화살 · 평행 사격","화살 · 교차 사격","화살 · 시차 연사","화살 · 사방 순환","화살 · 팔방 회전","화살 · 한 줄 안전지대"}[pattern];
             if(pattern>=5){useSpike=false;potionWave=false;}
         }
@@ -333,6 +337,7 @@ public sealed partial class ChamberGame : MonoBehaviour
             var shape=requested==PatternKind.Poison ? (SpillShape)variant : late && lateCasts%3==0 ? SpillShape.Star :
                 (casts%2==0 ? SpillShape.Cross : SpillShape.Line);
             int center=PotionPattern.Mark(board,poison,origin,escape,shape,exits);
+            for(int i=0;i<board.Count;i++)if(poison[i].Pending)botPoisonAnnouncedAt[i]=elapsed;
             if(center>=0)
             {
                 casts++;
@@ -371,6 +376,7 @@ public sealed partial class ChamberGame : MonoBehaviour
         return choice;
     }
     void PlanGroundRenewal(){
+        botGroundAnnouncedAt=elapsed;
         groundTiles.Clear();groundSignature=0;
         var available=new List<int>();
         for(int i=0;i<board.Count;i++){
@@ -435,6 +441,7 @@ public sealed partial class ChamberGame : MonoBehaviour
 
     void AddSpike(int cell,float onset){
         if(!tiles[cell].CanErupt)return;
+        botSpikeAnnouncedAt[cell]=elapsed;botHazardRevision++;
         dangerous[cell]=true;spikeOrder.Add(cell);onsets.Add(onset);
     }
 
