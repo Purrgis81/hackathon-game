@@ -8,6 +8,7 @@ public sealed class ChamberRunner
     public readonly ChamberAnimalAvatar Avatar;
     public readonly Transform View;
     Vector3 displayed;
+    float fallAge = -1;
     int visualFrom,visualTarget=-1,bufferedTarget=-1;
     float visualTime,predictionAge;
     public int NextVisualCell => visualTarget>=0 ? visualTarget : Target;
@@ -69,6 +70,30 @@ public sealed class ChamberRunner
         View.position=displayed;
         Hop.Present(dt,false);
     }
+    public void BeginFall()
+    {
+        fallAge = 0;
+        ClearPrediction();
+        Avatar.SetRunning(false);
+        Avatar.SetFalling(true);
+    }
+
+    public void UpdateLocomotion(float duration, float dt, bool guest, bool freeze, bool sinkingWithTile = false)
+    {
+        if (fallAge >= 0)
+        {
+            // Falling moves the render rig only; simulation and death focus keep the last tile position.
+            fallAge = Mathf.Min(fallAge + dt, .85f);
+            View.position = Feet.position + Vector3.down * (7.4f * fallAge * fallAge);
+            return;
+        }
+
+        // A crumbling tile can already carry the character down before the knockout.
+        Avatar.SetFalling(sinkingWithTile);
+        bool stepping = guest && visualTarget >= 0 ? visualTime < duration : Moving;
+        Avatar.SetRunning(stepping && !sinkingWithTile && Alive && !freeze && !Sliding && !Stunned);
+    }
+
     public int Cell { get; private set; }
     public int Target { get; private set; }
     public Vector2Int Buffered;
@@ -139,6 +164,9 @@ public sealed class ChamberRunner
         progress=0;
         ClearPrediction();displayed=Feet.position;View.localPosition=Vector3.zero;
         Hop.Reset();
+        fallAge = -1;
+        Avatar.SetRunning(false);
+        Avatar.SetFalling(false);
     }
 
     public bool Occupies(int cell) => cell==Cell || cell==Target;

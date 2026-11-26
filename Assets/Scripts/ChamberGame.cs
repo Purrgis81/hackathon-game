@@ -575,8 +575,15 @@ public sealed partial class ChamberGame : MonoBehaviour
             return;
         }
         lobby?.Hide();
-        if(lan.Guest)for(int i=0;i<participants;i++)
-            players[i].Present(board,players[i].Duration(stepSeconds),Mathf.Min(.06f,Time.unscaledDeltaTime),RoundFinished);
+        bool freeze = RoundFinished || CountingDown;
+        float presentationDelta = Mathf.Min(.06f,Time.unscaledDeltaTime);
+        for(int i=0;i<participants;i++){
+            var player=players[i];
+            if(lan.Guest)player.Present(board,player.Duration(stepSeconds),presentationDelta,RoundFinished);
+            bool sinkingWithTile = phase==Phase.GroundCracking && player.Alive
+                && (groundTiles.Contains(player.Cell) || groundTiles.Contains(player.Target));
+            player.UpdateLocomotion(stepSeconds,presentationDelta,lan.Guest,freeze,sinkingWithTile);
+        }
         foreach(var patch in poison)patch.Draw(elapsed);
         if(tide!=null){tide.Draw(elapsed);lava.Draw(elapsed);}
     }
@@ -796,6 +803,7 @@ public sealed partial class ChamberGame : MonoBehaviour
     }
     void KnockOut(int i,TrapKind cause,float when){
         var p=players[i];p.Alive=false;p.Buffered=Vector2Int.zero;knockedOutAt[i]=when;
+        if(cause==TrapKind.Fall)p.BeginFall();
         if(i==(duel?lan.Slot:0))lighting.Follow(null);
         string reason=cause==TrapKind.Spike?"가시":cause==TrapKind.Arrow?"화살":cause==TrapKind.Poison?"독 장판":
             cause==TrapKind.Wave?"파도":cause==TrapKind.Lava?"용암":"발판 붕괴";

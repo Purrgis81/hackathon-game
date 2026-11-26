@@ -3,10 +3,15 @@ using UnityEngine;
 public sealed class ChamberAnimalAvatar
 {
     static readonly string[] Animals = { "Bear", "Rabbit", "Frog", "Cat" };
+    static readonly int Moving = Animator.StringToHash("Moving");
+    static readonly int Falling = Animator.StringToHash("Falling");
     readonly Transform anchor;
     readonly MaterialPropertyBlock ink = new MaterialPropertyBlock();
     GameObject model;
     Renderer[] surfaces;
+    Animator animator;
+    bool running;
+    bool falling;
     int currentAnimal = -1;
     public string CharacterId => Animals[currentAnimal];
     Color currentColor;
@@ -18,9 +23,36 @@ public sealed class ChamberAnimalAvatar
         {
             sceneBear.SetParent(anchor, false);
             model = sceneBear.gameObject;
-            surfaces = model.GetComponentsInChildren<Renderer>();
+            BindModel();
             currentAnimal = 0;
         }
+    }
+
+    void BindModel()
+    {
+        surfaces = model.GetComponentsInChildren<Renderer>();
+        animator = model.GetComponentInChildren<Animator>();
+        if (animator && animator.runtimeAnimatorController)
+        {
+            animator.SetBool(Moving, running);
+            animator.SetBool(Falling, falling);
+        }
+    }
+
+    public void SetRunning(bool moving)
+    {
+        if (running == moving) return;
+        running = moving;
+        if (animator && animator.runtimeAnimatorController)
+            animator.SetBool(Moving, running);
+    }
+
+    public void SetFalling(bool value)
+    {
+        if (falling == value) return;
+        falling = value;
+        if (animator && animator.runtimeAnimatorController)
+            animator.SetBool(Falling, falling);
     }
 
     public void Show(ChamberProfile profile, int seat)
@@ -37,7 +69,7 @@ public sealed class ChamberAnimalAvatar
                 Object.Destroy(model);
             }
             model = Object.Instantiate(prefab, anchor, false);
-            surfaces = model.GetComponentsInChildren<Renderer>();
+            BindModel();
             currentAnimal = animal;
         }
         ink.SetColor("_Color", color);

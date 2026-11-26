@@ -76,13 +76,25 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 7c3916c543870f948af1044a55b2c530, type: 3}
+      propertyPath: m_Name
+      value: CuddlyCub-plump
+      objectReference: {fileID: 0}
     - target: {fileID: 4193958383391501691, guid: 7c3916c543870f948af1044a55b2c530, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: 88aa2be445b19d242a4af3fbc6a92978, type: 2}
-    - target: {fileID: 919132149155446097, guid: 7c3916c543870f948af1044a55b2c530, type: 3}
-      propertyPath: m_Name
-      value: CuddlyCub-plump
+    - target: {fileID: 5866666021909216657, guid: 7c3916c543870f948af1044a55b2c530, type: 3}
+      propertyPath: m_Controller
+      value: 
+      objectReference: {fileID: 9100000, guid: 38dd6bdc03ab62040ab8e28c903c6e05, type: 2}
+    - target: {fileID: 5866666021909216657, guid: 7c3916c543870f948af1044a55b2c530, type: 3}
+      propertyPath: m_CullingMode
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5866666021909216657, guid: 7c3916c543870f948af1044a55b2c530, type: 3}
+      propertyPath: m_ApplyRootMotion
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
