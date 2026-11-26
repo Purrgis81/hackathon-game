@@ -139,8 +139,6 @@ public sealed partial class ChamberGame : MonoBehaviour
                     break;
             }
         }
-        chamberCamera.clearFlags=CameraClearFlags.SolidColor;
-        chamberCamera.backgroundColor=Color.black;
         board=new RisingBoard(tiles,chamberCamera);
         tiles=board.Tiles;
         dangerous=new bool[tiles.Length];

@@ -108,7 +108,7 @@ public sealed class ChamberArrival : MonoBehaviour
 
         var near=floor+new Vector3(0,3.85f,-6.9f);
         float pullBack=Mathf.SmoothStep(0,1,Mathf.InverseLerp(1.32f,Duration,time));
-        var nearRotation=Quaternion.LookRotation(floor+Vector3.up*1.28f-near);
+        var nearRotation=Quaternion.LookRotation(floor+Vector3.up*2.55f-near);
         float shake=since<0 ? 0 : .18f*Mathf.Exp(-10*since);
         Vector3 kick=new Vector3(Mathf.Sin(68*since),Mathf.Cos(53*since),0)*shake;
         view.transform.SetPositionAndRotation(Vector3.Lerp(near,homePosition,pullBack)+kick,

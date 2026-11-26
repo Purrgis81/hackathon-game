@@ -156,7 +156,9 @@ Shader "Stone Chamber/Coastal Sea"
                 float fresnel = pow(1 - saturate(dot(normal, eye)), 3);
                 float3 reflected = reflect(-eye, normal);
                 float sky = .10 + .18 * fresnel + .08 * saturate(reflected.z * .5 + .5);
-                color = lerp(color, _SkyColor.rgb, sky * _ReflectionStrength);
+                float horizon = pow(1 - saturate(reflected.y), 2);
+                float3 skyReflection = lerp(_SkyColor.rgb, float3(.71, .72, .92), horizon * .58);
+                color = lerp(color, skyReflection, sky * _ReflectionStrength);
 
                 float3 sun = normalize(float3(-.28, .91, -.29));
                 float specular = pow(saturate(dot(normal, normalize(sun + eye))), 24);
@@ -174,7 +176,11 @@ Shader "Stone Chamber/Coastal Sea"
 
                 float foam = ImpactFoam(p, bend, _Time.y - _ImpactStart);
                 color = lerp(color, float3(.88, .985, .935), foam * .89);
-                return fixed4(color, 1);
+                // Fade distant ripples into the sky haze before the camera's far plane.
+                float viewDepth = dot(i.world - _WorldSpaceCameraPos.xyz, -UNITY_MATRIX_V[2].xyz);
+                float distanceHaze = smoothstep(95.0, _ProjectionParams.z * .78, viewDepth);
+                float3 horizonTint = lerp(_DeepColor.rgb, _SkyColor.rgb, .86);
+                return fixed4(lerp(color, horizonTint, distanceHaze), 1);
             }
             ENDCG
         }
