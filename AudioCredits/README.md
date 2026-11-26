@@ -15,5 +15,6 @@ The sources below use [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.
 | SpikeHit / ArrowHit | [Impact Sounds — Kenney](https://kenney.nl/assets/impact-sounds) | impactMetal_medium_000, impactPunch_heavy_000, impactWood_heavy_000, impactPunch_medium_000 |
 | PoisonSpill / PoisonHit | [Bubble Sound Effects — Brian MacIntosh](https://opengameart.org/content/bubble-sound-effects), [Impact Sounds — Kenney](https://kenney.nl/assets/impact-sounds) | bubbles-single1.wav, bubbles-single2.wav, impactGlass_light_001, impactSoft_heavy_000 |
 | StoneLanding | [Impact Sounds — Kenney](https://kenney.nl/assets/impact-sounds) | impactMining_000, impactPunch_heavy_000, footstep_concrete_002 |
+| StartWhistle | [Referee whistle sound.wav — Rosa-Orenes256](https://freesound.org/people/Rosa-Orenes256/sounds/538422/) | CC0 referee whistle recording. |
 
 ChamberAir and PlateLatch retain their original Ogg files. BuriedHall is a level-matched stereo conversion of the full loop. One-shot mixes use trimmed, level-matched recordings with pitch, timing and layering edits.

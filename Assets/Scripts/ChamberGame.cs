@@ -13,7 +13,7 @@ public sealed partial class ChamberGame : MonoBehaviour
     const float SpikeSeconds = 0.46f;
     const float FinalArenaRampSeconds=60f, FinalArenaMaxTempo=2f, MinimumTrapWarning=.6f;
     const string RecordKey = "StoneChamber.Best";
-    enum Phase { Arrival, AwaitStep, FirstStep, Warning, Strike, Rest, Collapse, LiftWarning, LiftTravel, TideWarning, TideTravel, LavaWarning, LavaTravel, Dead, Returning }
+    enum Phase { Arrival, SoloReady, Countdown, AwaitStep, FirstStep, Warning, Strike, Rest, Collapse, LiftWarning, LiftTravel, TideWarning, TideTravel, LavaWarning, LavaTravel, Dead, Returning }
     enum PatternKind { Automatic, Spike, Arrow, Poison, Wave, Lava, Lift, Collapse }
     Phase phase;
     ArrowVolley arrow;
@@ -56,6 +56,10 @@ public sealed partial class ChamberGame : MonoBehaviour
     string result;
     UnityEngine.Random.State duelRandom;
     public bool RoundFinished => phase==Phase.Dead || phase==Phase.Returning;
+    public bool CountingDown => phase==Phase.Countdown;
+    double countdownLeft;
+    float startBannerLeft;
+    GUIStyle startLabel;
     ChamberArrival arrival;
     ChamberAudio sound;
     DeathFocus deathFocus;
@@ -183,6 +187,7 @@ public sealed partial class ChamberGame : MonoBehaviour
         }
         if(lighting)lighting.Follow(players[duel ? lan.Slot : 0].View);
         openingTile=4;
+        startBannerLeft=0;
         elapsed = 0;
         finalArenaSeconds=0;patternTempo=1;patternWarningOverride=-1;
         wave = 0;
@@ -201,7 +206,10 @@ public sealed partial class ChamberGame : MonoBehaviour
             phase = Phase.Returning;
         }
         deathFocus.Reveal(transitionTime/DeathFocus.Reopen);
-        if (transitionTime >= DeathFocus.Reopen) phase = Phase.AwaitStep;
+        if (transitionTime >= DeathFocus.Reopen) {
+            if(duel) BeginCountdown();
+            else phase=Phase.SoloReady;
+        }
     }
 
     void Warn(PatternKind requested=PatternKind.Automatic,int variant=0)
@@ -414,7 +422,8 @@ public sealed partial class ChamberGame : MonoBehaviour
 
     void Move(ChamberRunner actor,Vector2Int direction)
     {
-        if(RoundFinished || phase==Phase.Arrival || direction==Vector2Int.zero)return;
+        if(RoundFinished || CountingDown || phase==Phase.Arrival || direction==Vector2Int.zero)return;
+        if(phase==Phase.SoloReady){BeginCountdown();return;}
         if(!actor.Alive)return;
         if(actor.Mash()){sound.StunTap(actor.WakeCount);return;}
         if(actor.Sliding)return;
@@ -465,10 +474,10 @@ public sealed partial class ChamberGame : MonoBehaviour
     {
         var outside=Random.state;Random.InitState(seed);duelRandom=Random.state;Random.state=outside;
         participants=count;priority=(seed&int.MaxValue)%count;
-        System.Array.Clear(wins,0,wins.Length);ApplyProfiles();ResetBoard();phase=Phase.AwaitStep;sound.ResumeMusic();
+        System.Array.Clear(wins,0,wins.Length);ApplyProfiles();ResetBoard();BeginCountdown();sound.ResumeMusic();
     }
     public void EndDuel(){
-        participants=1;priority=0;ApplyProfiles();ResetBoard();deathFocus.Reveal(1);phase=Phase.AwaitStep;sound.ResumeMusic();
+        participants=1;priority=0;ApplyProfiles();ResetBoard();deathFocus.Reveal(1);phase=Phase.SoloReady;sound.ResumeMusic();
     }
     public int DuelTick(Vector2Int[] keys,float dt){
         var outside=Random.state;Random.state=duelRandom;
@@ -495,6 +504,7 @@ public sealed partial class ChamberGame : MonoBehaviour
     }
 
     public void Anticipate(int slot,Vector2Int dir){
+        if(CountingDown || RoundFinished)return;
         var p=players[slot];if(!p.Alive||p.Sliding||p.Stunned)return;
         int origin=p.NextVisualCell;
         int target=origin<board.Count?board.Neighbor(origin,dir):-1;
@@ -529,8 +539,26 @@ public sealed partial class ChamberGame : MonoBehaviour
         Simulate(Mathf.Min(Time.deltaTime,.12f));
     }
 
+    void BeginCountdown()
+    {
+        phase=Phase.Countdown;
+        countdownLeft=3;
+        startBannerLeft=0;
+    }
+
     void Simulate(float dt)
     {
+        if(CountingDown){
+            countdownLeft-=dt;
+            if(countdownLeft<=0){
+                phase=Phase.AwaitStep;
+                startBannerLeft=.8f;
+                sound.StartWhistle();
+            }
+            return;
+        }
+        startBannerLeft=Mathf.Max(0,startBannerLeft-dt);
+        if(phase==Phase.SoloReady)return;
         if(phase==Phase.AwaitStep)return;
         while(dt>0 && phase!=Phase.Dead){
             float slice=Mathf.Min(dt,.005f);Tick(slice);dt-=slice;
@@ -542,7 +570,7 @@ public sealed partial class ChamberGame : MonoBehaviour
         {
             if (arrival.Advance(dt))
             {
-                phase = Phase.AwaitStep;
+                phase = Phase.SoloReady;
                 sound.ResumeMusic();
                 lan.OpenFromCommandLine();
             }
@@ -835,8 +863,12 @@ public sealed partial class ChamberGame : MonoBehaviour
         float scale = Mathf.Clamp(Screen.height / 640f, 0.65f, 1.6f);
         GUI.matrix = Matrix4x4.Scale(Vector3.one * scale);
         float w = Screen.width / scale, h = Screen.height / scale;
-        lan.Draw(w,h,phase==Phase.AwaitStep);
+        lan.Draw(w,h,phase==Phase.SoloReady);
         if(lan.Editing||(lan.Busy && !duel))return;
+        if(CountingDown || startBannerLeft>0 && !RoundFinished){
+            DrawStartCue(w,h);
+            if(CountingDown)return;
+        }
         if(duel)
         {
             for(int i=0;i<participants;i++){
@@ -874,12 +906,12 @@ public sealed partial class ChamberGame : MonoBehaviour
             GUI.color = color;
             return;
         }
-        if (phase == Phase.AwaitStep || phase == Phase.FirstStep)
+        if (phase == Phase.SoloReady || phase == Phase.AwaitStep || phase == Phase.FirstStep)
         {
-            if (phase == Phase.AwaitStep)
+            if (phase == Phase.SoloReady || phase == Phase.AwaitStep && startBannerLeft<=0)
             {
                 GUI.Box(new Rect((w-230)/2,h-65,230,38),GUIContent.none);
-                GUI.Label(new Rect((w-230)/2,h-65,230,38),"방향키로 첫발을 내디디세요",hint);
+                GUI.Label(new Rect((w-230)/2,h-65,230,38),phase==Phase.SoloReady?"방향키로 게임 시작":"방향키로 첫발을 내디디세요",hint);
             }
             return;
         }
@@ -897,5 +929,20 @@ public sealed partial class ChamberGame : MonoBehaviour
                 GUI.Box(rect,patch.Pending ? "독병 낙하" : $"독 {left:0.0}초");
             }
         }
+    }
+
+    void DrawStartCue(float width,float height)
+    {
+        startLabel ??= new GUIStyle(GUI.skin.label){alignment=TextAnchor.MiddleCenter,fontStyle=FontStyle.Bold};
+        float left=(float)countdownLeft;
+        int beat=Mathf.CeilToInt(left);
+        float age=CountingDown ? beat-left : .8f-startBannerLeft;
+        startLabel.fontSize=Mathf.RoundToInt((CountingDown ? 70 : 44)+10*Mathf.Clamp01(1-age/.18f));
+        string label=CountingDown ? beat.ToString() : "게임 스타트!";
+        var rect=new Rect(0,height*.28f,width,100);
+        startLabel.normal.textColor=new Color(.08f,.14f,.16f);
+        GUI.Label(new Rect(rect.x+2,rect.y+3,rect.width,rect.height),label,startLabel);
+        startLabel.normal.textColor=CountingDown ? Color.white : new Color(1f,.91f,.53f);
+        GUI.Label(rect,label,startLabel);
     }
 }

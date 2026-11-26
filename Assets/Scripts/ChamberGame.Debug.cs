@@ -100,7 +100,7 @@ public sealed partial class ChamberGame
     public bool DebugSetAutomaticPatterns(bool automatic){
         if(!DebugAvailable)return false;
         debugSession=true;debugBoardWidth=board.Width;debugAutomatic=automatic;
-        if(phase==Phase.AwaitStep && !automatic){phase=Phase.Rest;remaining=.1f;}
+        if((phase==Phase.SoloReady || phase==Phase.AwaitStep) && !automatic){phase=Phase.Rest;remaining=.1f;}
         debugMessage=automatic?"현재 공격 종료 후 일반 패턴과 붕괴를 자동 진행합니다.":"현재 공격 종료 후 다음 패턴을 기다립니다. 이동은 가능합니다.";
         return true;
     }
@@ -160,7 +160,7 @@ public sealed partial class ChamberGame
     public bool DebugRestoreNormalGame(){
         if(!DebugAvailable)return false;
         debugSession=false;debugAutomatic=true;debugPressure=-1;debugWarningSeconds=-1;debugTempo=-1;debugBoardWidth=10;
-        ResetBoard();deathFocus.Reveal(1);transitionTime=0;phase=Phase.AwaitStep;sound.ResumeMusic();
+        ResetBoard();deathFocus.Reveal(1);transitionTime=0;phase=Phase.SoloReady;sound.ResumeMusic();
         debugMessage="10×10 일반 게임으로 복원했습니다. 최고 기록을 다시 저장합니다.";
         return true;
     }

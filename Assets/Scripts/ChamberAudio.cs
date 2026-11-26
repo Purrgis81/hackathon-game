@@ -6,7 +6,7 @@ public sealed class ChamberAudio : MonoBehaviour
 {
     AudioSource music, room, mechanism, effects, impact, movement;
     AudioLowPassFilter musicFilter;
-    AudioClip latch, lift, block;
+    AudioClip latch, lift, block, startWhistle;
     AudioSource collisions;
     AudioSource hazardWarnings;
     AudioClip waveWarning,lavaWarning;
@@ -44,6 +44,7 @@ public sealed class ChamberAudio : MonoBehaviour
         traps = new[] { Clip("SpikeRise"), Clip("ArrowLoose"), Clip("PoisonSpill"),block,Clip("WaveSurge"),Clip("LavaImpact") };
         hits = new[] { Clip("SpikeHit"), Clip("ArrowHit"), Clip("PoisonHit"),block,Clip("WaveHit"),Clip("LavaImpact") };
         latch = Clip("PlateLatch");
+        startWhistle = Clip("StartWhistle");
     }
 
     AudioSource Source()
@@ -55,6 +56,8 @@ public sealed class ChamberAudio : MonoBehaviour
     }
 
     static AudioClip Clip(string name) => Resources.Load<AudioClip>("Sound/" + name);
+
+    public void StartWhistle() => effects.PlayOneShot(startWhistle,.65f);
 
     public void ResumeMusic()
     {
