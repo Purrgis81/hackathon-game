@@ -91,8 +91,7 @@ public static class ChamberScene
         var bronze = Surface("Bronze trim", new Color(.67f,.47f,.22f), .42f);
         var steel = Surface("Spike steel", new Color(.89f,.21f,.075f), .67f);
         steel.SetFloat("_Metallic", .28f);
-        var palette = Surface("Mini Dungeon palette", Color.white);
-        palette.mainTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(Kenney + "Textures/colormap.png");
+        var floorMaterial = AssetDatabase.LoadAssetAtPath<Material>(Materials + "Chamber Floor.mat");
         var border = new Material(Shader.Find("Stone Chamber/Hazard Border"));
         AssetDatabase.CreateAsset(border, Materials + "Trap warning.mat");
         var spikeMesh = SpikeMesh();
@@ -103,7 +102,7 @@ public static class ChamberScene
             var cell = Node("Tile " + (i + 1), room, new Vector3((i%3-1)*2.1f, 0, (i/3-1)*2.1f)).transform;
             var tile = cell.gameObject.AddComponent<SpikeTile>();
             game.tiles[i] = tile;
-            Model("floor", cell, Vector3.zero, 2.04f, false, palette);
+            Model("floor", cell, Vector3.zero, 2.04f, false, floorMaterial);
             var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
             Object.DestroyImmediate(quad.GetComponent<Collider>());
             quad.name = "Countdown inlay";
@@ -144,7 +143,7 @@ public static class ChamberScene
             dustRenderer.sharedMaterial = bronze;
         }
         game.explorer = Node("Explorer", room, Vector3.zero).transform;
-        Model("character-human", game.explorer, Vector3.zero, 1.45f, true, palette);
+        PrefabUtility.InstantiatePrefab(Resources.Load<GameObject>("ChamberAnimals/Bear"), game.explorer);
         game.explorer.rotation = Quaternion.Euler(0,180,0);
         var cameraObj = Node("Main Camera", null, new Vector3(0,11.8f,-5.2f));
         cameraObj.tag = "MainCamera";

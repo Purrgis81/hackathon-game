@@ -129,8 +129,7 @@ public sealed partial class ChamberGame : MonoBehaviour
     public void ApplyProfiles(){
         for(int i=0;i<participants;i++){
             profiles[i]=duel?lan.Profile(i):lan.Local;
-            var tint=new MaterialPropertyBlock();tint.SetColor("_Color",profiles[i].Tint(i));
-            foreach(var renderer in players[i].View.GetComponentsInChildren<Renderer>(true))renderer.SetPropertyBlock(tint);
+            players[i].Avatar.Show(profiles[i],i);
         }
     }
     string PlayerLabel(int i)=>string.IsNullOrEmpty(profiles[i].Name)?$"{i+1}P":$"{i+1}P {profiles[i].Name}";

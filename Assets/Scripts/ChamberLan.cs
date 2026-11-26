@@ -13,11 +13,11 @@ public sealed class ChamberLan : IDisposable
     const float Step=1f/TickRate;
     const int HistorySize=4096,Window=72;
     enum Mode { Offline,Menu,Allocating,Connecting,Room,Play }
-    const byte ProtocolVersion=7;
+    const byte ProtocolVersion=8;
     enum Kind : byte { Hello=1,Lobby,Start,Profile,Input,Frames,Ping,Pong,Leave,SetReady }
     sealed class Peer
     {
-        public NetworkConnection Connection;
+        public ChamberConnection Connection;
         public int Slot,ReceivedInput,Ack;
         public bool HasProfile,MatchReady;
         public ChamberProfile Profile;
@@ -33,11 +33,13 @@ public sealed class ChamberLan : IDisposable
     readonly Frame[] history=new Frame[HistorySize];
     readonly SortedDictionary<int,Frame> pending=new SortedDictionary<int,Frame>();
     readonly SortedDictionary<int,byte> commands=new SortedDictionary<int,byte>();
-    ChamberDatagrams wire;
+    IChamberWire wire;
     Mode mode;
     bool host,previousBackground,editing,online;
     string address="",invite="",message="",code="",draftName;
-    int draftColor,count=1,sequence,received,sent,epoch;
+    string steamCode="";
+    int transportTab;
+    int draftColor,draftAnimal,count=1,sequence,received,sent,epoch;
     float accumulator,lastSend,lastPing,connectingAt,playClock;
     const int MinReserve=8,MaxReserve=24;
     float lastHistoryAt,reserveTicks;
@@ -62,6 +64,11 @@ public sealed class ChamberLan : IDisposable
     }
     public void OpenFromCommandLine(){
         var args=Environment.GetCommandLineArgs();int join=Array.IndexOf(args,"-chamber-join");
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+        int steamJoin=Array.IndexOf(args,"-chamber-steam-code");
+        if(Array.IndexOf(args,"-chamber-steam-host")>=0){SteamRoom(true);return;}
+        if(steamJoin>=0&&steamJoin+1<args.Length){steamCode=args[steamJoin+1];SteamRoom(false);return;}
+#endif
         int relay=Array.IndexOf(args,"-chamber-code");
         if(Array.IndexOf(args,"-chamber-online-host")>=0)OnlineRoom(true);
         else if(relay>=0&&relay+1<args.Length){code=args[relay+1];OnlineRoom(false);}
@@ -76,7 +83,7 @@ public sealed class ChamberLan : IDisposable
         OpenMenu();
         try{
             host=true;online=false;Slot=0;roster[0]=Local;count=1;message="";
-            wire=new ChamberDatagrams();wire.Open(true,Port);mode=Mode.Room;
+            OpenUdp(true,Port);mode=Mode.Room;
             invite=string.Join(" / ",NetworkInterface.GetAllNetworkInterfaces()
                 .Where(n=>n.OperationalStatus==OperationalStatus.Up&&n.NetworkInterfaceType!=NetworkInterfaceType.Loopback)
                 .OrderByDescending(n=>n.NetworkInterfaceType==NetworkInterfaceType.Wireless80211)
@@ -89,8 +96,8 @@ public sealed class ChamberLan : IDisposable
         OpenMenu();
         if(!NetworkEndpoint.TryParse(ip.Trim(),Port,out var endpoint)){message="방장의 IPv4 주소를 입력하세요.";return;}
         try{
-            host=false;online=false;wire=new ChamberDatagrams();wire.Open(false,0);
-            peers.Add(new Peer{Connection=wire.Connect(endpoint)});connectingAt=Time.realtimeSinceStartup;mode=Mode.Connecting;message="";
+            host=false;online=false;
+            peers.Add(new Peer{Connection=OpenUdp(false,0).Connect(endpoint)});connectingAt=Time.realtimeSinceStartup;mode=Mode.Connecting;message="";
         }catch(Exception e){Fail(e.Message);}
     }
     public async void OnlineRoom(bool create){
@@ -103,12 +110,32 @@ public sealed class ChamberLan : IDisposable
             else data=await ChamberRelay.Join(code);
             if(epoch!=generation)return;
             host=create;Slot=0;count=1;roster[0]=Local;
-            wire=new ChamberDatagrams();wire.Open(create,0,data);
+            var udp=OpenUdp(create,0,data);
             if(create){mode=Mode.Room;Debug.Log("Chamber Relay: room code "+invite);}
-            else{peers.Add(new Peer{Connection=wire.Connect(data.Endpoint)});mode=Mode.Connecting;}
+            else{peers.Add(new Peer{Connection=udp.Connect(data.Endpoint)});mode=Mode.Connecting;}
             connectingAt=Time.realtimeSinceStartup;message="";
         }catch(Exception e){if(epoch==generation)Fail(e.Message);}
     }
+    ChamberDatagrams OpenUdp(bool server,ushort port,RelayServerData? data=null){
+        var udp=new ChamberDatagrams();wire=udp;udp.Open(server,port,data);return udp;
+    }
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+    void SteamRoom(bool create){
+        OpenMenu();
+        if(mode!=Mode.Menu)return;
+        try{
+            var steam=new ChamberSteam();wire=steam;steam.Open();
+            host=create;online=true;Slot=0;count=1;roster[0]=Local;message="";
+            if(create){
+                invite=steam.Host();mode=Mode.Room;
+                Debug.Log("Chamber Steam: room open");
+            }else{
+                peers.Add(new Peer{Connection=steam.Join(steamCode)});
+                connectingAt=Time.realtimeSinceStartup;mode=Mode.Connecting;
+            }
+        }catch(Exception e){Fail(e.Message);}
+    }
+#endif
     static byte Encode(Vector2Int d)=>d==Vector2Int.up?(byte)1:d==Vector2Int.right?(byte)2:d==Vector2Int.down?(byte)3:d==Vector2Int.left?(byte)4:(byte)0;
     static Vector2Int Decode(int d)=>d==1?Vector2Int.up:d==2?Vector2Int.right:d==3?Vector2Int.down:d==4?Vector2Int.left:Vector2Int.zero;
     static int Read(byte[] b,int at)=>BitConverter.ToInt32(b,at);
@@ -118,13 +145,14 @@ public sealed class ChamberLan : IDisposable
         Put(bytes,4,a);Put(bytes,8,b);Put(bytes,12,c);return bytes;
     }
     static byte[] Identity(Kind kind,int slot,ChamberProfile profile){
-        var bytes=Packet(kind,56,slot,profile.Swatch);
+        var bytes=Packet(kind,60,slot,profile.Swatch);
+        Put(bytes,56,profile.Animal);
         Put(bytes,12,System.Text.Encoding.UTF8.GetBytes(profile.Name??"",0,(profile.Name??"").Length,bytes,16));return bytes;
     }
     static ChamberProfile ReadIdentity(byte[] bytes){
         int length=Read(bytes,12);
-        if(bytes.Length!=56||length<0||length>40)throw new InvalidOperationException("프로필 메시지 오류");
-        return ChamberProfile.Create(System.Text.Encoding.UTF8.GetString(bytes,16,length),Read(bytes,8));
+        if(bytes.Length!=60||length<0||length>40)throw new InvalidOperationException("프로필 메시지 오류");
+        return ChamberProfile.Create(System.Text.Encoding.UTF8.GetString(bytes,16,length),Read(bytes,8),Read(bytes,56));
     }
     void UpdateLobby(bool rosterChanged=true){
         count=1;
@@ -164,14 +192,14 @@ public sealed class ChamberLan : IDisposable
             }
             if(wire==null)return;
             wire.Update();
-            NetworkConnection accepted;
+            ChamberConnection accepted;
             while(host&&(accepted=wire.Accept()).IsCreated){
                 if(mode==Mode.Room&&peers.Count<Capacity-1)peers.Add(new Peer{Connection=accepted});
                 else wire.Disconnect(accepted);
             }
             for(int i=peers.Count-1;i>=0;i--)ReadPeer(peers[i]);
             if(wire==null)return;
-            if(mode==Mode.Connecting&&Time.realtimeSinceStartup-connectingAt>12)throw new InvalidOperationException("UDP 접속 시간이 초과되었습니다.");
+            if(mode==Mode.Connecting&&Time.realtimeSinceStartup-connectingAt>25)throw new InvalidOperationException("방 접속 시간이 초과되었습니다. 방 코드와 방장 연결을 확인해 주세요.");
             if(Playing){
                 byte key=Encode(input);
                 if(key!=0&&!game.RoundFinished){
@@ -327,17 +355,19 @@ public sealed class ChamberLan : IDisposable
             if(!canOpen)return;
             if(editing){
                 float pw=Mathf.Min(width-24,320);
-                GUILayout.BeginArea(new Rect((width-pw)/2,(height-220)/2,pw,220),GUI.skin.box);
+                GUILayout.BeginArea(new Rect((width-pw)/2,(height-260)/2,pw,260),GUI.skin.box);
                 GUILayout.Label("캐릭터 설정");GUILayout.Label("이름 (최대 12자)");
-                draftName=GUILayout.TextField(draftName,12);GUILayout.Label("캐릭터 색상");
+                draftName=GUILayout.TextField(draftName,12);
+                GUILayout.Label("동물");draftAnimal=ChamberProfile.ChooseAnimal(draftAnimal);
+                GUILayout.Label("캐릭터 색상");
                 draftColor=ChamberProfile.ChooseColor(draftColor);
                 GUILayout.BeginHorizontal();
-                if(GUILayout.Button("저장")){Local=ChamberProfile.Create(draftName,draftColor);Local.Save();game.ApplyProfiles();editing=false;}
+                if(GUILayout.Button("저장")){Local=ChamberProfile.Create(draftName,draftColor,draftAnimal);Local.Save();game.ApplyProfiles();editing=false;}
                 if(GUILayout.Button("취소"))editing=false;
                 GUILayout.EndHorizontal();GUILayout.EndArea();
             }else{
-                if(GUI.Button(new Rect((width-200)/2,height-160,200,34),"캐릭터 설정")){draftName=Local.Name;draftColor=Local.Swatch;editing=true;}
-                if(GUI.Button(new Rect((width-200)/2,height-119,200,34),"친구와 UDP 대전"))OpenMenu();
+                if(GUI.Button(new Rect((width-200)/2,height-160,200,34),"캐릭터 설정")){draftName=Local.Name;draftColor=Local.Swatch;draftAnimal=Local.Animal;editing=true;}
+                if(GUI.Button(new Rect((width-200)/2,height-119,200,34),"친구와 대전"))OpenMenu();
             }
             return;
         }
@@ -345,9 +375,18 @@ public sealed class ChamberLan : IDisposable
         if(InRoom){DrawRoom(width,height);return;}
         float w=Mathf.Min(420,width-20);
         GUILayout.BeginArea(new Rect((width-w)/2,(height-390)/2,w,390),GUI.skin.box);
-        GUILayout.Label($"친구와 UDP 대전 · 2~{Capacity}명");
+        GUILayout.Label($"친구와 대전 · 2~{Capacity}명");
         if(mode==Mode.Menu){
-            if(GUILayout.Button("온라인 방 만들기 · 초대 코드",GUILayout.Height(33)))OnlineRoom(true);
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+            transportTab=GUILayout.Toolbar(transportTab,new[]{"Steam","기타 연결"});
+            if(transportTab==0){
+                if(GUILayout.Button("Steam 방 만들기",GUILayout.Height(33)))SteamRoom(true);
+                GUILayout.Label("Steam 방 코드");
+                steamCode=GUILayout.TextField(steamCode,40);
+                if(GUILayout.Button("Steam 코드로 참가"))SteamRoom(false);
+            }else{
+#endif
+            if(GUILayout.Button("Unity Relay 방 만들기",GUILayout.Height(33)))OnlineRoom(true);
             code=GUILayout.TextField(code,12);
             if(GUILayout.Button("초대 코드로 참가"))OnlineRoom(false);
             if(string.IsNullOrEmpty(Application.cloudProjectId))
@@ -356,6 +395,9 @@ public sealed class ChamberLan : IDisposable
             if(GUILayout.Button("직접 연결 방 만들기"))HostRoom();
             GUILayout.Label("방장 IP");address=GUILayout.TextField(address,45);
             if(GUILayout.Button("IP로 직접 참가"))JoinRoom(address);
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+            }
+#endif
             GUILayout.Label(message);
         }else GUILayout.Label("방장에게 연결하는 중…");
         if(GUILayout.Button("돌아가기"))Leave();

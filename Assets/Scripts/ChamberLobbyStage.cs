@@ -7,9 +7,8 @@ public sealed class ChamberLobbyStage
     readonly GameObject stage = new GameObject("Party lobby");
     readonly Camera camera;
     readonly Transform[] models = new Transform[ChamberLan.Capacity];
-    readonly Renderer[][] surfaces = new Renderer[ChamberLan.Capacity][];
+    readonly ChamberAnimalAvatar[] avatars = new ChamberAnimalAvatar[ChamberLan.Capacity];
     readonly Renderer[] rims = new Renderer[ChamberLan.Capacity];
-    readonly Color[] previousColors = new Color[ChamberLan.Capacity];
     readonly Color[] previousRims = new Color[ChamberLan.Capacity];
     readonly MaterialPropertyBlock ink = new MaterialPropertyBlock();
     static readonly Color Empty = new Color(.20f,.32f,.36f);
@@ -38,11 +37,12 @@ public sealed class ChamberLobbyStage
             var top = Platform(x,0,1.70f,.045f);
             ink.SetColor("_Color",new Color(.17f,.22f,.25f));
             top.SetPropertyBlock(ink);
-            var actor = Object.Instantiate(game.explorer,stage.transform);
+            var actor = new GameObject($"Seat {i+1}").transform;
+            actor.SetParent(stage.transform,false);
             actor.localPosition = new Vector3(x,.05f,0);
             actor.localRotation = Quaternion.Euler(0,180,0);
             models[i] = actor;
-            surfaces[i] = actor.GetComponentsInChildren<Renderer>(true);
+            avatars[i] = new ChamberAnimalAvatar(actor);
         }
     }
 
@@ -68,13 +68,7 @@ public sealed class ChamberLobbyStage
             bool occupied = i<room.OccupiedSeats;
             var model = models[i];
             model.gameObject.SetActive(occupied);
-            var color = occupied ? room.Profile(i).Tint(i) : Empty;
-            if (previousColors[i]!=color)
-            {
-                previousColors[i] = color;
-                ink.SetColor("_Color",color);
-                foreach(var surface in surfaces[i]) surface.SetPropertyBlock(ink);
-            }
+            if (occupied) avatars[i].Show(room.Profile(i),i);
             var rim = !occupied ? Empty : i==0 ? Host : room.IsSeatReady(i) ? Ready : Waiting;
             if(previousRims[i]!=rim){
                 previousRims[i]=rim;

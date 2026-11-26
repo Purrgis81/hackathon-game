@@ -1,33 +1,60 @@
-Shader "Stone Chamber/Pixel Grade"
+Shader "Stone Chamber/Pixel Surface"
 {
-    Properties { _MainTex ("Scene", 2D) = "white" {} }
+    Properties
+    {
+        _MainTex ("Base texture", 2D) = "white" {}
+        _Color ("Tint", Color) = (1,1,1,1)
+        _PixelHeight ("Vertical pixel resolution", Range(128,512)) = 256
+        _TextureGrid ("Texture grid", Range(64,512)) = 256
+        _ShadeSteps ("Light bands", Range(3,12)) = 7
+    }
     SubShader
     {
-        Cull Off ZWrite Off ZTest Always
-        Pass
+        Tags { "RenderType"="Opaque" }
+        CGPROGRAM
+        #pragma target 3.0
+        #pragma surface surf Pixel fullforwardshadows vertex:SnapVertex exclude_path:deferred
+        #include "UnityCG.cginc"
+
+        sampler2D _MainTex;
+        fixed4 _Color;
+        float _PixelHeight, _TextureGrid, _ShadeSteps;
+
+        void SnapVertex(inout appdata_full v)
         {
-            CGPROGRAM
-            #pragma vertex vert_img
-            #pragma fragment frag
-            #include "UnityCG.cginc"
-            sampler2D _MainTex;
-            float4 _Grid;
-            float bayer2(float2 p)
+            #if !defined(UNITY_PASS_SHADOWCASTER) && !defined(UNITY_PASS_META)
+            float4 clip = UnityObjectToClipPos(v.vertex);
+            if (clip.w > 0.001)
             {
-                p=fmod(floor(p),2);
-                return 2*p.x+3*p.y-4*p.x*p.y;
+                float block = max(1.0, round(_ScreenParams.y / _PixelHeight));
+                float2 grid = _ScreenParams.xy / block;
+                float2 screen = (clip.xy / clip.w * 0.5 + 0.5) * grid;
+                float2 shift = (round(screen) - screen) * (2.0 * clip.w) / grid;
+                float3 viewShift = float3(shift / float2(UNITY_MATRIX_P._m00, UNITY_MATRIX_P._m11), 0);
+                float3 worldShift = mul(viewShift, (float3x3)UNITY_MATRIX_V);
+                v.vertex.xyz += mul((float3x3)unity_WorldToObject, worldShift);
             }
-            fixed4 frag(v2f_img i) : SV_Target
-            {
-                float3 color=tex2D(_MainTex,i.uv).rgb;
-                float2 px=floor(i.uv*_Grid.xy);
-                float d=(4*bayer2(px)+bayer2(px*.5)+.5)/16;
-                float3 levels=float3(30,35,39);
-                float3 poster=floor(color*levels+d)/levels;
-                // Keep a deep ink floor without a checkerboard in empty space.
-                return fixed4(lerp(color,poster,smoothstep(.035,.16,max(color.r,max(color.g,color.b)))*.86),1);
-            }
-            ENDCG
+            #endif
         }
+
+        struct Input { float2 uv_MainTex; };
+        void surf(Input i, inout SurfaceOutput o)
+        {
+            float2 uv = i.uv_MainTex;
+            float2 sampleUV = (floor(uv * _TextureGrid) + 0.5) / _TextureGrid;
+            // Derivatives from the original UVs keep the mip level stable inside a pixel.
+            fixed3 paint = tex2Dgrad(_MainTex, sampleUV, ddx(uv), ddy(uv)).rgb;
+            o.Albedo = paint * _Color.rgb;
+            o.Alpha = 1;
+        }
+
+        half4 LightingPixel(SurfaceOutput s, half3 lightDir, half atten)
+        {
+            half diffuse = saturate(dot(s.Normal, lightDir));
+            half band = floor(diffuse * _ShadeSteps + 0.5h) / _ShadeSteps;
+            return half4(s.Albedo * _LightColor0.rgb * (band * atten), s.Alpha);
+        }
+        ENDCG
     }
+    Fallback "Diffuse"
 }

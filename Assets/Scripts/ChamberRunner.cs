@@ -5,6 +5,7 @@ public sealed class ChamberRunner
 {
     public readonly Transform Feet;
     public readonly ExplorerHop Hop;
+    public readonly ChamberAnimalAvatar Avatar;
     public readonly Transform View;
     Vector3 displayed;
     int visualFrom,visualTarget=-1,bufferedTarget=-1;
@@ -113,7 +114,8 @@ public sealed class ChamberRunner
     {
         Feet=feet;
         Hop=new ExplorerHop(feet);
-        var pose=feet.GetChild(0);
+        var pose=Hop.Body;
+        Avatar=new ChamberAnimalAvatar(pose, feet.Find("Bear"));
         View=new GameObject("Rendered explorer").transform;
         View.SetParent(feet,false);pose.SetParent(View,false);
     }

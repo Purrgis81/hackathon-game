@@ -6,13 +6,12 @@ public sealed class AbyssLighting : MonoBehaviour
 {
     Transform feet, shaft;
     Light overhead;
-    Material pixelInk, slate, lightInk, water;
+    Material slate, lightInk, water;
 
 
     public void Prepare(Transform explorer, SpikeTile[] tiles, Mesh quad)
     {
         feet = explorer;
-        pixelInk = new Material(Resources.Load<Shader>("ChamberPixels"));
         slate = new Material(Resources.Load<Shader>("ChamberSlate"));
         lightInk = new Material(Resources.Load<Shader>("ChamberShaft"));
         water = new Material(Resources.Load<Shader>("DrownedRuins"));
@@ -73,22 +72,8 @@ public sealed class AbyssLighting : MonoBehaviour
         shaft.localScale = new Vector3(2.1f,axis.magnitude,1);
     }
 
-    void OnRenderImage(RenderTexture source, RenderTexture destination)
-    {
-        if (!pixelInk) { Graphics.Blit(source,destination); return; }
-        int height = Mathf.Min(224,source.height);
-        int width = Mathf.Max(1,Mathf.RoundToInt(height*(float)source.width/source.height));
-        var low = RenderTexture.GetTemporary(width,height,0,RenderTextureFormat.ARGB32);
-        low.filterMode = FilterMode.Point;
-        pixelInk.SetVector("_Grid", new Vector4(width,height,0,0));
-        Graphics.Blit(source,low,pixelInk);
-        Graphics.Blit(low,destination);
-        RenderTexture.ReleaseTemporary(low);
-    }
-
     void OnDestroy()
     {
-        if (pixelInk) Destroy(pixelInk);
         if (slate) Destroy(slate);
         if (lightInk) Destroy(lightInk);
         if (water) Destroy(water);
