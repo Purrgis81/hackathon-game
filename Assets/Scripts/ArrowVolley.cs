@@ -7,7 +7,6 @@ public sealed class ArrowVolley
     readonly float[] delay=new float[32],height=new float[32];
     readonly bool[] fired=new bool[32];
     int count;
-    public const float LiftRiseAt=4.3f,LiftRiseSeconds=.65f;
     public bool Armed=>count>0;
     public Vector3 LaunchPosition=>lanes[0].LaunchPosition;
     public float Speed=>lanes[0].Speed;
@@ -20,7 +19,7 @@ public sealed class ArrowVolley
     }
     public void Plan(RisingBoard board,int origin,bool horizontal,int sign,int pattern,bool[] exits,float pressure){
         Clear();
-        if(pattern>=5){
+        if(pattern==5||pattern==6){
             int sides=pattern==5?4:8;
             float beat=pattern==5?.45f:.34f;
             var center=new Vector3(board.Center,0,board.Center);
@@ -32,6 +31,18 @@ public sealed class ArrowVolley
             return;
         }
         var cell=board.Cell(origin);int row=horizontal?cell.y:cell.x;
+        if(pattern==7){
+            int safeMin=-(board.Width-1)/2,safeMax=board.Width/2;
+            int safeRow=row,bestExits=-1;
+            for(int candidate=safeMin;candidate<=safeMax;candidate++){
+                int countExits=0;
+                for(int i=0;i<board.Count;i++)if(exits[i]&&(horizontal?board.Cell(i).y:board.Cell(i).x)==candidate)countExits++;
+                int distance=Mathf.Abs(candidate-row),bestDistance=Mathf.Abs(safeRow-row);
+                if(countExits>bestExits||(countExits==bestExits&&distance<bestDistance)){safeRow=candidate;bestExits=countExits;}
+            }
+            for(int lane=safeMin;lane<=safeMax;lane++)if(lane!=safeRow)Add(board,horizontal,lane,((lane-safeMin)&1)==0?sign:-sign,0,pressure,true);
+            return;
+        }
         Add(board,horizontal,row,sign,0,pressure);
         if(pattern==0)return;
         if(pattern==1||pattern==4)Add(board,horizontal,row,-sign,.48f,pressure);
@@ -49,25 +60,15 @@ public sealed class ArrowVolley
             }
         }
     }
-    public void PlanLift(RisingBoard board,float pressure){
-        Clear();bool horizontal=board.LiftHorizontal;int lo=-(board.Width-1)/2,hi=board.Width/2;
-        for(int row=lo;row<=hi;row++){
-            int index=row-lo;
-            Add(board,horizontal,row,1,.65f+index*.055f,pressure);
-            if(index%3==1)Add(board,horizontal,row,-1,2.4f+index*.04f,pressure,-2.8f);
-            if(index%3==2)Add(board,horizontal,row,-1,LiftRiseAt+.60f+index*.025f,pressure);
-        }
-        FlightTime=Mathf.Max(FlightTime,LiftRiseAt+LiftRiseSeconds+.35f);
-    }
-    void Add(RisingBoard board,bool horizontal,int row,int sign,float wait,float pressure,float floor=0){
+    void Add(RisingBoard board,bool horizontal,int row,int sign,float wait,float pressure,bool highVisibility=false,float floor=0){
         var center=horizontal?new Vector3(board.Center,floor,row*RisingBoard.Spacing):new Vector3(row*RisingBoard.Spacing,floor,board.Center);
-        AddShot(center,(horizontal?Vector3.right:Vector3.forward)*sign,(board.Width-1)*.5f,wait,pressure);
+        AddShot(center,(horizontal?Vector3.right:Vector3.forward)*sign,(board.Width-1)*.5f,wait,pressure,highVisibility);
     }
-    void AddShot(Vector3 center,Vector3 direction,float radius,float wait,float pressure){
+    void AddShot(Vector3 center,Vector3 direction,float radius,float wait,float pressure,bool highVisibility=false){
         var lane=lanes[count];
         if(!lane){lane=owner.AddComponent<ArrowLane>();lanes[count]=lane;}
         delay[count]=wait;height[count]=center.y+.55f;fired[count]=false;
-        lane.Aim(center,direction,radius,pressure);count++;
+        lane.SetHighVisibility(highVisibility);lane.Aim(center,direction,radius,pressure);count++;
         if(wait>.85f)lane.Preview(false);
         FlightTime=Mathf.Max(FlightTime,wait+lane.FlightTime);
         unchecked{Signature=Signature*107+Mathf.RoundToInt(direction.x*10)+Mathf.RoundToInt(direction.z*100)+Mathf.RoundToInt(wait*1000)+Mathf.RoundToInt(center.y*100);}

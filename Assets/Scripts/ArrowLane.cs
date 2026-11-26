@@ -128,13 +128,20 @@ public sealed class ArrowLane : MonoBehaviour
         bolt.gameObject.SetActive(true);
     }
 
+    public void SetHighVisibility(bool enabled){
+        Color guideColor=enabled?new Color(1f,.19f,.015f):new Color(.06f,.53f,.65f);
+        Color tipColor=enabled?new Color(1f,.86f,.28f):new Color(.64f,.85f,.91f);
+        blue.color=guideColor;blue.SetColor("_EmissionColor",guideColor*(enabled?1.35f:.55f));
+        ivory.color=tipColor;ivory.SetColor("_EmissionColor",tipColor*(enabled?.8f:.55f));
+    }
+
     public void Draw(float t,float age)
     {
         if(!Armed)return;
         StringPose(Mathf.SmoothStep(0,1,t));
         bolt.position=start+direction*(.23f*(1-Mathf.SmoothStep(0,1,t)));
         blue.SetColor("_EmissionColor",blue.color*Mathf.Lerp(.15f,.9f,t));
-        float travel=age*Speed/guide.localScale.z;
+        float travel=age*Speed*.45f/guide.localScale.z;
         for(int i=0;i<chevrons.Length;i++)
         {
             var pos=chevrons[i].localPosition;
