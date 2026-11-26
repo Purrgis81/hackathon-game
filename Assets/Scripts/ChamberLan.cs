@@ -13,7 +13,7 @@ public sealed class ChamberLan : IDisposable
     const float Step=1f/TickRate;
     const int HistorySize=4096,Window=72;
     enum Mode { Offline,Menu,Allocating,Connecting,Room,Play }
-    const byte ProtocolVersion=12;
+    const byte ProtocolVersion=13;
     enum Kind : byte { Hello=1,Lobby,Start,Profile,Input,Frames,Ping,Pong,Leave,SetReady }
     sealed class Peer
     {
@@ -202,7 +202,7 @@ public sealed class ChamberLan : IDisposable
             if(mode==Mode.Connecting&&Time.realtimeSinceStartup-connectingAt>25)throw new InvalidOperationException("방 접속 시간이 초과되었습니다. 방 코드와 방장 연결을 확인해 주세요.");
             if(Playing){
                 byte key=Encode(input);
-                if(key!=0&&!game.RoundFinished){
+                if(key!=0&&!game.RoundFinished&&!game.CountingDown){
                     if(host){if(inputs[0].Count<8)inputs[0].Enqueue(key);}
                     else if(commands.Count<8){commands.Add(++sent,key);game.Anticipate(Slot,input);}
                 }
@@ -305,7 +305,7 @@ public sealed class ChamberLan : IDisposable
                 }
                 while(p.Inputs.TryGetValue(p.ReceivedInput+1,out byte key)){
                     p.Inputs.Remove(++p.ReceivedInput);
-                    if(!game.RoundFinished&&inputs[p.Slot].Count<8)inputs[p.Slot].Enqueue(key);
+                    if(!game.RoundFinished&&!game.CountingDown&&inputs[p.Slot].Count<8)inputs[p.Slot].Enqueue(key);
                 }
                 continue;
             }
