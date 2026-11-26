@@ -3,6 +3,8 @@ using UnityEngine;
 public sealed class ChamberAnimalAvatar
 {
     static readonly string[] Animals = { "Bear", "Rabbit", "Frog", "Cat" };
+    // Height of each retargeted idle pose's soles above the gameplay prefab pivot, in tile-space units.
+    static readonly float[] SoleHeights = { .689f, .861f, .855f, .694f };
     static readonly int Moving = Animator.StringToHash("Moving");
     static readonly int Falling = Animator.StringToHash("Falling");
     readonly Transform anchor;
@@ -23,13 +25,14 @@ public sealed class ChamberAnimalAvatar
         {
             sceneBear.SetParent(anchor, false);
             model = sceneBear.gameObject;
-            BindModel();
-            currentAnimal = 0;
+            BindModel(0);
         }
     }
 
-    void BindModel()
+    void BindModel(int animal)
     {
+        currentAnimal = animal;
+        model.transform.localPosition += Vector3.down * SoleHeights[animal];
         surfaces = model.GetComponentsInChildren<Renderer>();
         animator = model.GetComponentInChildren<Animator>();
         if (animator && animator.runtimeAnimatorController)
@@ -69,8 +72,7 @@ public sealed class ChamberAnimalAvatar
                 Object.Destroy(model);
             }
             model = Object.Instantiate(prefab, anchor, false);
-            BindModel();
-            currentAnimal = animal;
+            BindModel(animal);
         }
         ink.SetColor("_Color", color);
         foreach (var surface in surfaces) surface.SetPropertyBlock(ink);

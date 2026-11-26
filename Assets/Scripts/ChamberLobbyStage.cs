@@ -39,7 +39,7 @@ public sealed class ChamberLobbyStage
             top.SetPropertyBlock(ink);
             var actor = new GameObject($"Seat {i+1}").transform;
             actor.SetParent(stage.transform,false);
-            actor.localPosition = new Vector3(x,.05f,0);
+            actor.position = new Vector3(top.bounds.center.x,top.bounds.max.y,top.bounds.center.z);
             actor.localRotation = Quaternion.Euler(0,180,0);
             models[i] = actor;
             avatars[i] = new ChamberAnimalAvatar(actor);
@@ -74,12 +74,6 @@ public sealed class ChamberLobbyStage
                 previousRims[i]=rim;
                 ink.SetColor("_Color",rim);
                 rims[i].SetPropertyBlock(ink);
-            }
-            if (occupied)
-            {
-                var position = model.localPosition;
-                position.y = .05f + .045f*(1+Mathf.Sin(Time.unscaledTime*2.2f+i));
-                model.localPosition = position;
             }
         }
     }
