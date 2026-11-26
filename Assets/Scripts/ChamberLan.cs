@@ -13,7 +13,7 @@ public sealed class ChamberLan : IDisposable
     const float Step=1f/TickRate;
     const int HistorySize=4096,Window=72;
     enum Mode { Offline,Menu,Allocating,Connecting,Room,Play }
-    const byte ProtocolVersion=8;
+    const byte ProtocolVersion=9;
     enum Kind : byte { Hello=1,Lobby,Start,Profile,Input,Frames,Ping,Pong,Leave,SetReady }
     sealed class Peer
     {

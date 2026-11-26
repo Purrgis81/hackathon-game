@@ -6,33 +6,16 @@ public sealed class AbyssLighting : MonoBehaviour
 {
     Transform feet, shaft;
     Light overhead;
-    Material slate, lightInk, water;
+    Material slate, lightInk;
 
 
     public void Prepare(Transform explorer, SpikeTile[] tiles, Mesh quad)
     {
         feet = explorer;
-        slate = new Material(Resources.Load<Shader>("ChamberSlate"));
+        slate = new Material(tiles[0].transform.Find("floor").GetComponent<MeshRenderer>().sharedMaterial);
         lightInk = new Material(Resources.Load<Shader>("ChamberShaft"));
-        water = new Material(Resources.Load<Shader>("DrownedRuins"));
-        var deep = new GameObject("Flooded ruins far below").transform;
-        deep.SetParent(explorer.parent,false);
-        deep.localPosition = Vector3.down*16;
-        deep.localRotation = Quaternion.Euler(90,0,0);
-        deep.localScale = new Vector3(180,180,1);
-        deep.gameObject.AddComponent<MeshFilter>().sharedMesh=quad;
-        var depths=deep.gameObject.AddComponent<MeshRenderer>();
-        depths.sharedMaterial=water;
-        depths.shadowCastingMode=ShadowCastingMode.Off;
-        depths.receiveShadows=false;
-
-        for (int i = 0; i < tiles.Length; i++)
-        {
-            var cell = tiles[i].transform;
-            var floor = cell.Find("floor");
-            foreach (var surface in floor.GetComponentsInChildren<MeshRenderer>(true))
-                surface.sharedMaterial = slate;
-        }
+        foreach (var tile in tiles)
+            tile.transform.Find("floor").GetComponent<MeshRenderer>().sharedMaterial = slate;
 
         var lamp = new GameObject("Overhead tile light");
         lamp.transform.SetParent(explorer.parent,false);
@@ -76,7 +59,6 @@ public sealed class AbyssLighting : MonoBehaviour
     {
         if (slate) Destroy(slate);
         if (lightInk) Destroy(lightInk);
-        if (water) Destroy(water);
 
     }
 }

@@ -1,39 +1,41 @@
-Shader "Stone Chamber/Fractured Slate"
+Shader "Stone Chamber/Coastal Turf"
 {
-    Properties { _Pool ("Light on the floor", Vector) = (0,0,0,0) }
+    Properties
+    {
+        _LightGrass ("Light grass", Color) = (.42,.56,.32,1)
+        _DarkGrass ("Dark grass", Color) = (.37,.50,.28,1)
+        _Pool ("Light on the floor", Vector) = (9999,0,9999,0)
+    }
     SubShader
     {
-        Tags { "RenderType"="Opaque" }
+        Tags { "RenderType"="Opaque" "DisableBatching"="True" }
         CGPROGRAM
-        #pragma surface surf Lambert fullforwardshadows
+        #pragma surface surf Lambert fullforwardshadows vertex:vert
         #pragma target 3.0
-        struct Input { float3 worldPos; float3 worldNormal; };
+        struct Input { float3 worldPos; float3 worldNormal; float depth; float grassTone; };
+        fixed4 _LightGrass, _DarkGrass;
         float4 _Pool;
-        float hash(float2 p) { return frac(sin(dot(p,float2(127.1,311.7)))*43758.5453); }
-        void surf(Input i,inout SurfaceOutput o)
+        void vert(inout appdata_full v, out Input o)
         {
-            float3 p=i.worldPos;
-            float2 tile=floor(p.xz/2.32+.5);
-            float2 local=p.xz-tile*2.32;
-            float seed=hash(tile);
-            float top=smoothstep(.5,.85,i.worldNormal.y);
-            float2 texel=floor(p.xz*25)/25;
-            float grain=hash(texel);
-            float edge=max(abs(local.x),abs(local.y));
-            float rim=(1-smoothstep(.021,.041,abs(edge-.938)));
-            float corners=rim*step(.65,min(abs(local.x),abs(local.y)));
-            float seam=abs(local.x+local.y*.56+floor(texel.y*6)*.047-.99*(seed-.5));
-            float crack=(1-smoothstep(.009,.029,seam))*smoothstep(.45,.91,edge);
-            float3 stone=lerp(float3(.22,.29,.35),float3(.38,.42,.46),seed*.68+grain*.10);
-            stone+=rim*.031+corners*float3(.16,.13,.07)-crack*.085;
-            float strata=frac(-p.y*5.3+floor((p.x+p.z)*7)*.031+seed);
-            float depth=exp(min(0,p.y)*2.0);
-            float3 cliff=float3(.18,.24,.30)*depth*(.7+.4*step(.79,strata));
-            float emerge=smoothstep(-8,.0,p.y);
-            o.Albedo=lerp(cliff,stone*emerge,top);
-            float2 offset=(p.xz-_Pool.xz)*float2(.93,1.04);
-            float pool=exp(-dot(offset,offset)*1.65);
-            o.Emission=lerp(float3(.005,.008,.016)+cliff*.28,(stone*.16+pool*float3(.24,.185,.105))*emerge,top);
+            UNITY_INITIALIZE_OUTPUT(Input,o);
+            o.depth = -v.vertex.y;
+            // Each floor pivot stays at the centre of its grid cell, including during a lift.
+            float2 cell = round(unity_ObjectToWorld._m03_m23 / 2.32);
+            o.grassTone = frac((cell.x + cell.y) * .5) * 2;
+        }
+        void surf(Input i, inout SurfaceOutput o)
+        {
+            float2 p = i.worldPos.xz;
+            float3 grass = lerp(_LightGrass.rgb,_DarkGrass.rgb,i.grassTone);
+            float depth = i.depth;
+            float lip = .17 + .025*sin(p.x*2+p.y*1.7);
+            float3 earth = lerp(float3(.44,.245,.13),float3(.30,.155,.092),saturate(depth*.73));
+            float3 turf = lerp(grass*.78,grass,saturate(i.worldNormal.y));
+            float3 paint = lerp(turf,earth,smoothstep(lip,lip+.018,depth));
+            float2 offset = i.worldPos.xz-_Pool.xz;
+            float pool = exp(-dot(offset,offset)*1.6);
+            o.Albedo = paint;
+            o.Emission = paint*.18 + pool*float3(.085,.065,.03)*saturate(i.worldNormal.y);
         }
         ENDCG
     }

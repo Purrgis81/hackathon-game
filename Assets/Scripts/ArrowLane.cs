@@ -19,7 +19,7 @@ public sealed class ArrowLane : MonoBehaviour
     void Awake()
     {
         // The scene's Standard shader is also available in player builds.
-        var template = GetComponent<ChamberGame>().tiles[0].spikes.GetChild(0).GetComponent<Renderer>().sharedMaterial;
+        var template = GetComponent<ChamberGame>().trapMetal;
         blue = Ink(template, new Color(.06f,.53f,.65f));
         ivory = Ink(template, new Color(.64f,.85f,.91f));
         bronze = new Material(template){color=new Color(.59f,.34f,.12f)};
@@ -42,7 +42,7 @@ public sealed class ArrowLane : MonoBehaviour
         Bar(bolt,"Bronze ferrule",0,-.055f,.14f,.16f,0,bronze);
         var tip = new GameObject("Arrowhead");
         tip.transform.SetParent(bolt,false);
-        var blade = GetComponent<ChamberGame>().tiles[0].spikes.GetChild(0).GetComponent<MeshFilter>().sharedMesh;
+        var blade = GetComponent<ChamberGame>().arrowheadMesh;
         tip.AddComponent<MeshFilter>().sharedMesh = blade;
         tip.AddComponent<MeshRenderer>().sharedMaterial = ivory;
         tip.transform.localRotation = Quaternion.Euler(90,0,0);
