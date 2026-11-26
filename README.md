@@ -1,4 +1,7 @@
-# 침묵의 석실 · StoneChamber
+# hackathon-game
+해커톤용 단기 게임 개발
+
+## 침묵의 석실 · StoneChamber
 
 Unity 3D 타일 회피 게임입니다. 혼자 플레이하거나 초대 코드로 2~5인 온라인 대전을 할 수 있습니다.
 
