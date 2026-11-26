@@ -42,19 +42,20 @@ public static class ChamberBotSmoke
             if(games.Length!=2||games.Any(g=>!g.DebugAvailable))return;
             EditorApplication.update-=Update;
             foreach(var game in games)game.enabled=false;
-            Behavior();EasyDifficulty();AdventurerExploration();SafetyAndBlocking();BoundedWork();Practice(games[0]);Network(games);ForecastEquivalence(games[0]);ActualBlocking(games[0]);Hazards(games[0]);NewPatterns(games[0]);Automatic(games[0]);Finish(null);
+            Behavior();BlockerEngagement();EasyDifficulty();PerceptionAndMobility();TrackingInertia();BotStandoffs();AdventurerExploration();SafetyAndBlocking();BoundedWork();Practice(games[0]);Network(games);ForecastEquivalence(games[0]);ActualBlocking(games[0]);ActualBlockerEngagement(games[0]);Hazards(games[0]);NewPatterns(games[0]);ActualPerception(games[0]);ActualStandoff(games[0]);ActualTurnFeint(games[0]);Automatic(games[0]);Finish(null);
         }catch(Exception error){Finish(error);}
     }
     static ChamberBot Make(ChamberBotPersonality p=ChamberBotPersonality.Blocker,ChamberBotDifficulty d=ChamberBotDifficulty.Normal,int seed=421)
         =>new ChamberBot(new ChamberBotSettings{Personality=p,Difficulty=d},seed);
     sealed class Arena:IChamberBotArena {
-        public int Width=5;public int CellCount=>Width*Width;public int ActorCount=>2;public float Now{get;set;} public float MoveSeconds=>.16f;public float SafetySeconds{get;set;}=1.2f;
+        public int Width=5;public int CellCount=>Width*Width;public int ActorCount=>actors.Length;public float Now{get;set;} public float MoveSeconds=>.16f;public float SafetySeconds{get;set;}=1.2f;public int HazardRevision{get;set;}
         public ChamberBotActor[] actors={new ChamberBotActor{Cell=12,Target=12,Alive=true},new ChamberBotActor{Cell=0,Target=0,Alive=true}};
         public bool danger;public int forbidden=-1;public Func<int,int,float,float,float> risk;
+        public float noticeAt=float.NegativeInfinity;
         public Vector2Int Coordinates(int cell)=>new Vector2Int(cell%Width,cell/Width);
         public int Neighbor(int cell,Vector2Int d){var p=Coordinates(cell)+d;return p.x<0||p.x>=Width||p.y<0||p.y>=Width?-1:p.y*Width+p.x;}
         public ChamberBotActor Actor(int slot)=>actors[slot];
-        public float TravelRisk(int slot,int from,int to,float delay,float duration)=>risk!=null?risk(from,to,delay,duration):to==forbidden||danger&&from==actors[slot].Cell&&to==from?1:0;
+        public float TravelRisk(int slot,int from,int to,float delay,float duration,float observedThrough=float.PositiveInfinity)=>observedThrough<noticeAt?0:risk!=null?risk(from,to,delay,duration):to==forbidden||danger&&from==actors[slot].Cell&&to==from?1:0;
         public void Place(int slot,int cell){actors[slot].Cell=actors[slot].Target=cell;}
         public Vector2Int Step(ChamberBot bot,float seconds=.36f){Now+=seconds;var d=bot.Tick(this,0,seconds);if(d!=Vector2Int.zero)Place(0,Neighbor(actors[0].Cell,d));return d;}
     }
@@ -76,6 +77,7 @@ public static class ChamberBotSmoke
         var a=new Arena();var bot=Make();bot.Tick(a,0,1);
         a.Now=.4f;a.Place(1,1);bot.Tick(a,0,.4f);
         a.Now=.8f;a.Place(1,2);bot.Tick(a,0,.4f);
+        a.Now=1.2f;bot.Tick(a,0,.4f);
         Check(bot.RememberedMoves==2&&bot.PredictedCell(a,1)==3,"Opponent movement memory was not used");
         a.Now=5;bot.Tick(a,0,.4f);Check(bot.PredictedCell(a,1)==2,"Opponent memory did not expire");
         Note("Observed opponent heading is remembered and expires; no future input is required");
@@ -85,7 +87,9 @@ public static class ChamberBotSmoke
         Check(bold.Aggression>cautious.Aggression+.5f,"Personalities have no meaningful aggression difference");
         calm.danger=true;bold.Tick(calm,0,1);Check(bold.Aggression==0,"Bot kept attacking while its own tile was dangerous");
         calm.danger=false;var opportunist=Make(ChamberBotPersonality.Opportunist);opportunist.Tick(calm,0,1);float before=opportunist.Aggression;
-        calm.actors[1].Stunned=true;opportunist.Tick(calm,0,1);Check(opportunist.Aggression>before+.5f,"Opportunity did not change aggression");
+        calm.actors[1].Stunned=true;opportunist.Tick(calm,0,1);
+        Check(opportunist.Aggression==before,"Opponent status bypassed perception delay");
+        calm.Now=.4f;opportunist.Tick(calm,0,.4f);Check(opportunist.Aggression>before+.5f,"Recognized opportunity did not change aggression");
         Note("Personality changes preferences; danger suppresses aggression; a stunned opponent creates an opportunity");
         foreach(ChamberBotPersonality p in Enum.GetValues(typeof(ChamberBotPersonality)))
             Check(Make(p).DecisionInterval==Make().DecisionInterval,"Personality changed skill timing");
@@ -154,11 +158,170 @@ public static class ChamberBotSmoke
         for(int i=0;i<1200;i++){
             timing.Now=i/120f;slow.Tick(timing,0,1f/120);
             if(slow.Decisions==last)continue;
-            if(previousAt>=0)Check(timing.Now-previousAt>=.44f,"Easy decision cadence is too fast");
+            if(previousAt>=0)Check(timing.Now-previousAt>=.11f&&timing.Now-previousAt<.16f,"Easy received a separate movement cooldown");
             previousAt=timing.Now;last=slow.Decisions;
         }
-        Check(last>=17&&last<=23&&slow.SearchDepth==2,"Easy cadence or search depth did not decrease");
-        Note("Easy uses roughly half-second decisions, a two-action horizon, and preserves board/collision legality");
+        Check(last>=70&&last<=85&&slow.SearchDepth==2,"Common cadence or easy search depth changed");
+        Note("Easy retains mistakes and a two-action horizon with the same controller cadence and movement legality as other skills");
+    }
+    static void PerceptionAndMobility(){
+        foreach(ChamberBotDifficulty difficulty in Enum.GetValues(typeof(ChamberBotDifficulty))){
+            var arena=new Arena();arena.Place(1,14);var bot=Make(d:difficulty,seed:73);
+            for(int tick=0;tick<1200;tick++){arena.Now=tick/120f;bot.Tick(arena,0,1f/120);}
+            Check(bot.DecisionInterval==.13f&&bot.Decisions>=70&&bot.Decisions<=85,"Difficulty changed the movement opportunity cadence");
+            arena.actors[0].Stunned=true;int presses=0;
+            for(int tick=0;tick<120;tick++)if(bot.Tick(arena,0,1f/120)!=Vector2Int.zero)presses++;
+            Check(presses>=6,"Difficulty slowed the ordinary recovery inputs");
+        }
+        var fresh=new Arena{Now=5,noticeAt=5,HazardRevision=1,forbidden=13};fresh.Place(1,14);
+        var normal=Make();
+        Check(normal.Tick(fresh,0,1)==Vector2Int.right&&normal.ObservedThrough<5,"Perception delay froze movement instead of withholding the new warning");
+        fresh.Now=5.3f;
+        Check(normal.Tick(fresh,0,.3f)!=Vector2Int.right&&normal.ObservedThrough>=5,"New warning never became actionable after recognition");
+        Note("All skills share movement/recovery cadence; bots can move before noticing a new warning and avoid it after recognition");
+
+        var a=new Arena();var b=new Arena();a.Place(1,14);b.Place(1,14);
+        var one=Make(d:ChamberBotDifficulty.Hard,seed:97);var two=Make(d:ChamberBotDifficulty.Hard,seed:97);
+        var state=UnityEngine.Random.state;float expected=UnityEngine.Random.value;UnityEngine.Random.state=state;
+        for(int warning=0;warning<300;warning++){
+            a.Now=b.Now=warning*3f+1;a.HazardRevision=b.HazardRevision=warning*2+1;
+            int before=one.LateNotices;float remembered=one.ObservedThrough;
+            var x=one.Tick(a,0,3);var y=two.Tick(b,0,3);
+            Check(x==Vector2Int.right&&x==y&&one.LateNotices==two.LateNotices&&one.ObservedThrough==two.ObservedThrough,"Late notice changed movement ability or seeded reproducibility");
+            float lag=a.Now-one.ObservedThrough;
+            Check(one.ObservedThrough>=remembered,"Late notice erased already recognized information");
+            Check(one.LateNotices>before?lag>=.249f&&lag<=.391f:Mathf.Abs(lag-.07f)<.001f,"Hard perception lag outside intended range");
+            if(one.LateNotices>before){
+                // A second warning shortly afterwards cannot stack another lapse.
+                a.Now=b.Now+=.2f;a.HazardRevision++;b.HazardRevision++;
+                int count=one.LateNotices;one.Tick(a,0,.2f);two.Tick(b,0,.2f);
+                Check(one.LateNotices==count&&one.ObservedThrough>=remembered,"Late notices stacked during the two-second cooldown");
+            }
+        }
+        Check(one.LateNotices>=15&&one.LateNotices<=50&&one.Mistakes==0,"Hard late-notice frequency is outside expected range");
+        Check(UnityEngine.Random.value==expected,"Attention randomness changed pattern randomness");UnityEngine.Random.state=state;
+        int late=one.LateNotices;one.ResetRound();Check(one.LateNotices==0&&float.IsNegativeInfinity(one.ObservedThrough),"Round reset retained perceptions");
+        Note("Hard late recognition: "+late+" / 300 spaced warning events, bounded delay, no input freeze, no forgotten warnings, deterministic and independent of pattern RNG");
+    }
+    static Vector2Int Turn(Vector2Int direction,int turns){for(int i=0;i<turns;i++)direction=new Vector2Int(-direction.y,direction.x);return direction;}
+    static int TrackingCell(int x,int y,int turns){var p=Turn(new Vector2Int(x-4,y-4),turns)+new Vector2Int(4,4);return p.y*10+p.x;}
+    static Arena TrackingArena(int turns=0){
+        var arena=new Arena{Width=10};arena.Place(0,TrackingCell(4,3,turns));
+        arena.actors[1]=new ChamberBotActor{Cell=TrackingCell(6,4,turns),Target=TrackingCell(5,4,turns),Alive=true,Moving=true};return arena;
+    }
+    static void TrackingInertia(){
+        int cases=0;
+        foreach(var difficulty in new[]{ChamberBotDifficulty.Normal,ChamberBotDifficulty.Hard})
+        for(int rotation=0;rotation<4;rotation++)for(int seed=0;seed<8;seed++){
+            var arena=TrackingArena(rotation);var bot=Make(d:difficulty,seed:seed);var oldInput=Turn(Vector2Int.up,rotation);
+            Check(bot.Tick(arena,0,1)==oldInput,"Tracking fixture did not begin the intercept");arena.Place(0,TrackingCell(4,4,rotation));
+            arena.Now=.01f;arena.actors[1].Cell=TrackingCell(5,4,rotation);arena.actors[1].Target=TrackingCell(5,3,rotation);
+            bot.Tick(arena,0,.01f);arena.Now=.18f;
+            var continued=bot.Tick(arena,0,.17f);
+            Check(continued==oldInput&&bot.RepeatedInputs==1,"Rapid turn immediately redirected committed inputs");
+            Check(bot.PredictedCell(arena,1)==TrackingCell(5,4,rotation),"Current target leaked through delayed opponent tracking");
+            var instant=Make(d:difficulty,seed:seed);
+            Check(instant.Tick(arena,0,1)==Turn(Vector2Int.down,rotation),"Turn fixture does not distinguish live tracking from committed movement");
+            arena.Now=.01f+bot.TrackingSeconds+.2f;
+            Check(bot.Tick(arena,0,1)==Turn(Vector2Int.down,rotation)&&bot.PredictedCell(arena,1)==TrackingCell(5,3,rotation),"Bot never corrected its old prediction after recognizing the turn");
+            cases++;
+        }
+        Note("Rapid 90-degree turns bait the old input before reacquisition in "+cases+" skill/rotation/seed scenarios; immediate-target tracking would choose the opposite input");
+        foreach(bool stop in new[]{false,true}){
+            var arena=TrackingArena();var bot=Make(d:ChamberBotDifficulty.Hard);bot.Tick(arena,0,1);arena.Place(0,44);
+            arena.Now=.01f;arena.actors[1]=new ChamberBotActor{Cell=45,Target=stop?45:46,Moving=!stop,Alive=true};bot.Tick(arena,0,.01f);
+            arena.Now=.18f;Check(bot.Tick(arena,0,.17f)==Vector2Int.up,"Stop/reversal was tracked instantly");
+            arena.Now=.65f;var input=bot.Tick(arena,0,.47f);
+            Check(bot.PredictedCell(arena,1)==(stop?45:46),"Stop/reversal was never recognized");
+            if(stop)Check(input==Vector2Int.zero,"Bot repeated inputs indefinitely after its target stopped");
+        }
+        foreach(bool collision in new[]{false,true}){
+            var arena=TrackingArena();var bot=Make(d:ChamberBotDifficulty.Hard);bot.Tick(arena,0,1);arena.Place(0,44);
+            if(collision){
+                Array.Resize(ref arena.actors,3);arena.actors[2]=new ChamberBotActor{Cell=54,Target=54,Alive=true};
+            }else arena.forbidden=54;
+            arena.Now=.18f;Check(bot.Tick(arena,0,.18f)!=Vector2Int.up&&bot.RepeatedInputs==0,"Committed input ignored a recognized hazard or occupied tile");
+        }
+        var reset=TrackingArena();var controlled=Make(d:ChamberBotDifficulty.Hard);controlled.Tick(reset,0,1);
+        reset.actors[0].Stunned=true;controlled.Tick(reset,0,1);Check(Get<int>(controlled,"repeatInputs")==0,"Stun retained a stale input burst");
+        controlled.ResetRound();Check(controlled.RepeatedInputs==0&&Get<int[]>(controlled,"motionCounts").All(x=>x==0),"Round reset retained opponent snapshots or input bursts");
+        Note("Reversal/stop recovery is bounded; recognized danger, occupancy, stun and round resets cancel stale input bursts");
+
+        var state=UnityEngine.Random.state;float expected=UnityEngine.Random.value;UnityEngine.Random.state=state;
+        var a=TrackingArena();var b=TrackingArena();var one=Make(d:ChamberBotDifficulty.Hard,seed:66);var two=Make(d:ChamberBotDifficulty.Hard,seed:66);
+        for(int tick=0;tick<720;tick++){
+            a.Now=b.Now=tick/120f;
+            if(tick%30==0){int cell=45+(tick/30)%2;a.actors[1].Cell=b.actors[1].Cell=cell;a.actors[1].Target=b.actors[1].Target=cell==45?46:45;}
+            Check(one.Tick(a,0,1f/120)==two.Tick(b,0,1f/120),"Tracking history changed deterministic inputs");
+        }
+        Check(UnityEngine.Random.value==expected,"Tracking changed game pattern randomness");UnityEngine.Random.state=state;
+        Check(Get<int[]>(one,"motionCounts").All(x=>x<=16),"Opponent history grew beyond its fixed bound");
+        Note("Opponent motion history and repeated inputs are deterministic, bounded to 16 observations per actor, and independent of game RNG");
+    }
+    static int Separation(Arena arena)=>Mathf.Abs(arena.Coordinates(arena.actors[0].Cell).x-arena.Coordinates(arena.actors[1].Cell).x)+Mathf.Abs(arena.Coordinates(arena.actors[0].Cell).y-arena.Coordinates(arena.actors[1].Cell).y);
+    static void BlockerEngagement(){
+        int cases=0;
+        foreach(var difficulty in new[]{ChamberBotDifficulty.Normal,ChamberBotDifficulty.Hard})
+        foreach(int distance in new[]{3,5,6})for(int rotation=0;rotation<4;rotation++)for(int seed=0;seed<8;seed++){
+            var arena=new Arena{Width=10};arena.Place(0,TrackingCell(2,4,rotation));arena.Place(1,TrackingCell(2+distance,4,rotation));
+            var bot=Make(d:difficulty,seed:seed);arena.Step(bot,.18f);
+            Check(Separation(arena)<distance,"Blocker did not approach a visible target beyond two cells: "+difficulty+"/"+distance+"/"+rotation+"/"+seed+" intent="+bot.Intent);
+            for(int step=0;step<40&&Separation(arena)>1;step++)arena.Step(bot,.18f);
+            Check(Separation(arena)==1,"Blocker never reached its target's lane");
+            for(int step=0;step<4;step++)Check(arena.Step(bot,.18f)==Vector2Int.zero&&bot.Intent=="블로킹 유지","Blocker abandoned the lane after approaching");
+            cases++;
+        }
+        Note("Blockers approach and occupy a stationary target's lane from 3/5/6 cells across "+cases+" skill/rotation/seed scenarios");
+        foreach(var difficulty in new[]{ChamberBotDifficulty.Normal,ChamberBotDifficulty.Hard})for(int seed=0;seed<8;seed++){
+            var arena=new Arena{Width=10,forbidden=43};arena.Place(0,42);arena.Place(1,46);var bot=Make(d:difficulty,seed:seed);
+            for(int step=0;step<60&&Separation(arena)>1;step++){arena.Step(bot,.18f);Check(arena.actors[0].Cell!=43,"Approach entered a recognized hazard");}
+            Check(Separation(arena)==1,"Nearby danger prevented a safe detour to the target");
+        }
+        var refuge=new Arena{Width=10};refuge.Place(0,42);refuge.Place(1,46);refuge.risk=(from,to,delay,duration)=>to==42||to==46?0:1;
+        var cautious=Make();for(int step=0;step<30;step++)Check(refuge.Step(cautious,.18f)==Vector2Int.zero,"Target pursuit abandoned the only safe tile");
+        foreach(var personality in new[]{ChamberBotPersonality.Survivor,ChamberBotPersonality.Opportunist}){
+            var arena=new Arena{Width=10,forbidden=52};arena.Place(0,42);arena.Place(1,46);
+            Check(arena.Step(Make(personality),.18f)==Vector2Int.zero,"Non-blocker inherited distant pursuit");
+        }
+        Note("Blocker approach detours around recognized hazards, preserves the only safe refuge, and does not change defensive personalities");
+        foreach(var difficulty in new[]{ChamberBotDifficulty.Normal,ChamberBotDifficulty.Hard})for(int rotation=0;rotation<4;rotation++){
+            var arena=new Arena{Width=10};arena.Place(0,TrackingCell(4,4,rotation));
+            arena.actors[1]=new ChamberBotActor{Cell=TrackingCell(5,3,rotation),Target=TrackingCell(5,4,rotation),Alive=true,Moving=true};
+            Check(Make(d:difficulty).Tick(arena,0,1)==Turn(Vector2Int.up,rotation),"Blocker stood beside a moving target instead of approaching its forward lane");
+        }
+        Note("Moving opponents are intercepted from the front; standing at their side no longer counts as a successful block");
+    }
+    static void BotStandoffs(){
+        int cases=0;
+        foreach(ChamberBotDifficulty difficulty in Enum.GetValues(typeof(ChamberBotDifficulty)))
+        foreach(var personality in new[]{ChamberBotPersonality.Survivor,ChamberBotPersonality.Blocker,ChamberBotPersonality.Opportunist})
+        for(int seed=0;seed<8;seed++){
+            var arena=new Arena();arena.Place(0,12);arena.Place(1,13);arena.actors[0].IsBot=arena.actors[1].IsBot=true;
+            var bots=new[]{Make(personality,difficulty,seed),Make(personality,difficulty,seed+67)};
+            float still=0,longest=0;int moves=0;
+            for(int tick=0;tick<960;tick++){
+                arena.Now=tick/120f;var left=bots[0].Tick(arena,0,1f/120);var right=bots[1].Tick(arena,1,1f/120);
+                bool moved=false;
+                for(int j=0;j<2;j++){
+                    int slot=(tick+j)%2;var direction=slot==0?left:right;if(direction==Vector2Int.zero)continue;
+                    int cell=arena.Neighbor(arena.actors[slot].Cell,direction);
+                    Check(cell>=0,"Standoff release left the board");
+                    if(cell==arena.actors[1-slot].Cell)continue;
+                    arena.Place(slot,cell);moved=true;moves++;
+                }
+                still=moved?0:still+1f/120;longest=Mathf.Max(longest,still);
+            }
+            Check(moves>0&&longest<3.5f,"Mutual bot block never released: "+difficulty+"/"+personality+"/"+seed+" hold="+longest);
+            if(difficulty!=ChamberBotDifficulty.Easy)Check(bots[0].StandoffBreaks+bots[1].StandoffBreaks>0,"Pair did not recognize its standoff");
+            cases++;
+        }
+        var refuge=new Arena();refuge.Place(1,13);refuge.actors[1].IsBot=true;
+        refuge.risk=(from,to,delay,duration)=>to==12||to==13?0:1;
+        var holder=Make();
+        for(int tick=0;tick<120;tick++){refuge.Now=tick*.13f;Check(holder.Tick(refuge,0,.13f)==Vector2Int.zero,"Standoff forced a bot out of its only safe refuge");}
+        Check(holder.StandoffBreaks==0,"No-exit refuge was classified as a completed release");
+        holder.ResetRound();Check(holder.StandoffBreaks==0,"Round restart retained standoff state");
+        Note("Mutual bot blocking releases in "+cases+" skill/personality/seed scenarios; an occupied sole safe refuge is preserved");
     }
     static void AdventurerExploration(){
         int cases=0;
@@ -192,24 +355,24 @@ public static class ChamberBotSmoke
             for(int step=0;step<20;step++){
                 var movement=arena.Step(bot);
                 Check(arena.actors[0].Cell!=13,"Bot left safe ground for a hazard");
-                if(personality!=ChamberBotPersonality.Adventurer&&difficulty!=ChamberBotDifficulty.Easy)Check(movement==Vector2Int.zero,"Defensive bot abandoned its safe refuge");
+                if(personality!=ChamberBotPersonality.Adventurer&&personality!=ChamberBotPersonality.Blocker&&difficulty!=ChamberBotDifficulty.Easy)Check(movement==Vector2Int.zero,"Defensive bot abandoned its safe refuge");
             }
-            if(personality!=ChamberBotPersonality.Adventurer&&difficulty!=ChamberBotDifficulty.Easy)Check(bot.Intent=="안전구역 유지","Safe holding was not reported");
+            if(personality!=ChamberBotPersonality.Adventurer&&personality!=ChamberBotPersonality.Blocker&&difficulty!=ChamberBotDifficulty.Easy)Check(bot.Intent=="안전구역 유지","Safe holding was not reported");
             arena.Place(0,12);
             arena.risk=(from,to,delay,duration)=>to==12||to==13?1:0;
             for(int attempt=0;attempt<3&&arena.actors[0].Cell==12;attempt++)arena.Step(bot,1);
             Check(arena.actors[0].Cell!=12&&arena.actors[0].Cell!=13,"New danger did not cancel safe holding");
             var afterEscape=arena.Step(bot,1);
             Check(arena.actors[0].Cell!=12&&arena.actors[0].Cell!=13,"Bot returned to danger after escaping");
-            if(personality!=ChamberBotPersonality.Adventurer&&difficulty!=ChamberBotDifficulty.Easy)Check(afterEscape==Vector2Int.zero,"Defensive bot did not settle after reaching another refuge");
+            if(personality!=ChamberBotPersonality.Adventurer&&personality!=ChamberBotPersonality.Blocker&&difficulty!=ChamberBotDifficulty.Easy)Check(afterEscape==Vector2Int.zero,"Defensive bot did not settle after reaching another refuge");
         }
         Note("All personalities/difficulties across 12 seeds avoid danger and escape new warnings; defensive types settle in safe refuges");
         var delayed=new Arena{SafetySeconds=3.2f};delayed.Place(1,14);
         delayed.risk=(from,to,delay,duration)=>to==13&&delay+duration>=2.5f?1:0;
-        Check(delayed.Step(Make())==Vector2Int.zero,"Long visible warning was ignored to block a player");
+        Check(delayed.Step(Make())!=Vector2Int.right&&delayed.actors[0].Cell!=13,"Long visible warning was ignored to block a player");
         var crossing=new Arena();crossing.Place(1,14);
         crossing.risk=(from,to,delay,duration)=>from==12&&to==13?1:0;
-        Check(crossing.Step(Make())==Vector2Int.zero,"Safe destination overrode a dangerous movement segment");
+        Check(crossing.Step(Make())!=Vector2Int.right&&crossing.actors[0].Cell!=13,"Safe destination overrode a dangerous movement segment");
         Note("Normal bots keep long-warning and hazardous-crossing protection while blocking");
         for(int seed=0;seed<24;seed++){
             var arena=new Arena();arena.Place(1,14);var bot=Make(seed:seed);
@@ -236,11 +399,40 @@ public static class ChamberBotSmoke
         Check(actors[1].Cell==13&&!actors[1].Moving&&game.Bot(1).Intent=="블로킹 유지","Actual runner failed to occupy and hold the lane");
         Call(game,"Move",actors[0],Vector2Int.left);
         Check(actors[0].Target==14&&!actors[0].Moving&&actors[0].Blocker==1,"Human input was not blocked by ordinary occupancy");
-        Call(game,"AddSpike",13,0f);Warning(game);Set(game,"remaining",3f);Set(game,"warningSeconds",3f);Run(game,.5f);
-        Check(actors[1].Cell!=13,"Long visible warning did not immediately cancel the block");Run(game,3f);
+        // Allow the longest hard notice (.39s), controller tick and actual hop.
+        Call(game,"AddSpike",13,0f);Warning(game);Set(game,"remaining",3f);Set(game,"warningSeconds",3f);Run(game,.8f);
+        Check(actors[1].Cell!=13,"Long visible warning did not cancel the block after perception and landing");Run(game,3f);
         Check(actors[1].Alive&&actors[1].Cell!=13,"Actual blocking runner failed to retreat from a new spike warning");
         Get<ChamberLan>(game,"lan").Leave();
         Note("Actual game: bot occupied the lane, blocked a human movement input, then survived a new spike warning");
+    }
+    static void ActualBlockerEngagement(ChamberGame game){
+        foreach(var difficulty in new[]{ChamberBotDifficulty.Normal,ChamberBotDifficulty.Hard}){
+            Setup(game,10);var board=Get<RisingBoard>(game,"board");var actors=Get<ChamberRunner[]>(game,"players");
+            int Cell(int x,int y)=>Enumerable.Range(0,board.Count).First(n=>board.Cell(n)==new Vector2Int(x,y));
+            actors[0].Reset(Cell(3,0),board);actors[1].Reset(Cell(-2,0),board);
+            Get<ChamberBot[]>(game,"bots")[1]=Make(d:difficulty,seed:31);Set(game,"remaining",20f);Run(game,3f);
+            var delta=board.Cell(actors[1].Cell)-board.Cell(actors[0].Cell);
+            Check(Mathf.Abs(delta.x)+Mathf.Abs(delta.y)==1&&!actors[1].Moving,"Actual blocker never approached a player five cells away");
+            Call(game,"Move",actors[0],delta);
+            Check(!actors[0].Moving&&actors[0].Blocker==1,"Approach failed to create a real body block");
+        }
+        Get<ChamberLan>(game,"lan").Leave();
+        Note("Actual normal/hard blockers close a five-cell gap and block a human's ordinary movement input");
+        foreach(var difficulty in new[]{ChamberBotDifficulty.Normal,ChamberBotDifficulty.Hard})for(int rotation=0;rotation<4;rotation++){
+            Setup(game,10);var board=Get<RisingBoard>(game,"board");var actors=Get<ChamberRunner[]>(game,"players");
+            int Cell(Vector2Int p)=>Enumerable.Range(0,board.Count).First(n=>board.Cell(n)==p);
+            actors[0].Reset(Cell(Turn(new Vector2Int(-3,0),rotation)),board);actors[1].Reset(Cell(Turn(new Vector2Int(3,0),rotation)),board);
+            Get<ChamberBot[]>(game,"bots")[1]=Make(d:difficulty,seed:37);Set(game,"remaining",20f);
+            var keys=new Vector2Int[4];keys[0]=Turn(Vector2Int.right,rotation);bool blocked=false;
+            for(int tick=0;tick<360&&!blocked;tick++){
+                keys[1]=game.BotInput(1,1f/120);game.DuelTick(keys,1f/120);
+                blocked=actors[0].Blocker==1&&board.Neighbor(actors[0].Cell,keys[0])>=0;
+            }
+            Check(blocked,"Actual moving player was never intercepted: "+difficulty+"/"+rotation);
+        }
+        Get<ChamberLan>(game,"lan").Leave();
+        Note("Actual normal/hard blockers intercept continuous human movement from six cells away in all four lane directions");
     }
     static void Practice(ChamberGame game){
         var lan=Get<ChamberLan>(game,"lan");lan.OpenBotRoom();lan.AddBot(ChamberBotPersonality.Blocker,ChamberBotDifficulty.Hard);lan.StartMatch();
@@ -478,6 +670,57 @@ public static class ChamberBotSmoke
         }
         Note("One-safe-row arrows: horizontal/vertical forecasts and actual bot survival pass on 3x3/5x5/10x10");
         Get<ChamberLan>(game,"lan").Leave();
+    }
+    static void ActualPerception(ChamberGame game){
+        foreach(string pattern in new[]{"Spike","Poison","Wave","Lava","GroundRenewal","Collapse","ArrowRows"}){
+            Setup(game);Set(game,"elapsed",5f);ForcePattern(game,pattern);Idle(game,.02f);
+            var board=Get<RisingBoard>(game,"board");var arena=(IChamberBotArena)game;int warned=0;
+            for(int cell=0;cell<board.Count;cell++){
+                if(arena.TravelRisk(1,cell,cell,0,4,5.02f)<=0)continue;
+                Check(arena.TravelRisk(1,cell,cell,0,4,4.99f)==0,"Unrecognized warning leaked into "+pattern+" forecast");warned++;
+            }
+            Check(warned>0,"Perception fixture did not announce "+pattern);
+        }
+        Get<ChamberLan>(game,"lan").Leave();
+        Note("Actual spike/poison/wave/lava/ground/collapse/arrow-row warnings become available only after their announcement time is recognized");
+    }
+    static void ActualStandoff(ChamberGame game){
+        var lan=Get<ChamberLan>(game,"lan");if(lan.Busy)lan.Leave();lan.OpenBotRoom();
+        lan.SetBot(1,new ChamberBotSettings{Personality=ChamberBotPersonality.Blocker,Difficulty=ChamberBotDifficulty.Normal});
+        lan.AddBot(ChamberBotPersonality.Blocker,ChamberBotDifficulty.Normal);lan.StartMatch();game.BeginDuel(681,3);
+        var board=Get<RisingBoard>(game,"board");board.Resize(5);var actors=Get<ChamberRunner[]>(game,"players");
+        int first=12,second=board.Neighbor(first,Vector2Int.right);
+        actors[0].Reset(0,board);actors[1].Reset(first,board);actors[2].Reset(second,board);
+        EnumField(game,"phase","Rest");Set(game,"remaining",20f);var keys=new Vector2Int[4];bool moved=false;
+        for(int tick=0;tick<600;tick++){
+            keys[1]=game.BotInput(1,1f/120);keys[2]=game.BotInput(2,1f/120);game.DuelTick(keys,1f/120);
+            moved|=actors[1].Cell!=first||actors[2].Cell!=second;
+            Check(actors[1].Alive&&actors[2].Alive&&actors[1].Cell!=actors[2].Cell,"Actual standoff release violated occupancy or safety");
+        }
+        Check(moved&&game.Bot(1).StandoffBreaks+game.Bot(2).StandoffBreaks>0,"Actual bot pair stayed mutually blocked");
+        lan.Leave();Note("Actual runners release a mutual bot block using ordinary movement and occupancy; human blocking remains covered separately");
+    }
+    static void ActualTurnFeint(ChamberGame game){
+        Setup(game,10);var board=Get<RisingBoard>(game,"board");var actors=Get<ChamberRunner[]>(game,"players");
+        int Cell(int x,int y)=>Enumerable.Range(0,board.Count).First(n=>board.Cell(n)==new Vector2Int(x,y));
+        actors[0].Reset(Cell(2,0),board);actors[1].Reset(Cell(0,-1),board);
+        var bot=Get<ChamberBot[]>(game,"bots")[1]=Make(d:ChamberBotDifficulty.Hard,seed:91);
+        EnumField(game,"phase","Rest");Set(game,"remaining",20f);
+        Call(game,"Move",actors[0],Vector2Int.left);
+        var first=bot.Tick((IChamberBotArena)game,1,1);Check(first==Vector2Int.up,"Actual intercept did not start in the expected direction");
+        Call(game,"Move",actors[1],first);bool turned=false,continued=false;var keys=new Vector2Int[4];
+        for(int tick=0;tick<100;tick++){
+            if(!turned&&!actors[0].Moving){Call(game,"Move",actors[0],Vector2Int.down);turned=true;}
+            keys[1]=game.BotInput(1,1f/120);
+            if(turned&&!continued&&keys[1]!=Vector2Int.zero){
+                Check(keys[1]==Vector2Int.up&&actors[0].Target==Cell(1,-1),"Actual bot instantly mirrored the human turn");continued=true;
+            }
+            game.DuelTick(keys,1f/120);
+            Check(actors[0].Alive&&actors[1].Alive&&actors[0].Cell!=actors[1].Cell,"Turn feint violated normal movement/collision");
+        }
+        Check(turned&&continued&&bot.RepeatedInputs>0,"Actual turn did not bait a continued old-direction input");
+        Get<ChamberLan>(game,"lan").Leave();
+        Note("Actual human turn feint: hard bot continues the previous key direction while the human turns away, then resumes ordinary decisions");
     }
     static void Automatic(ChamberGame game){
         foreach(int width in new[]{3,5,10}){
