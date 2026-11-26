@@ -69,7 +69,6 @@ public sealed class RisingBoard
     public void Reset()=>Resize(10);
     public void Resize(int width){
         waterProperties.Clear();
-        sea.SetPropertyBlock(null);
         System.Array.Clear(temporaryMissing,0,temporaryMissing.Length);Width=Mathf.Clamp(width,3,10);fallingEnd=0;fallAge=0;camera.transform.position=CameraPosition();
         for(int i=0;i<Tiles.Length;i++){
             Tiles[i].gameObject.SetActive(i<Count);
@@ -77,6 +76,15 @@ public sealed class RisingBoard
             Tiles[i].transform.localRotation=homeRotations[i];
         }
         DressCoast();
+        SetShoreBounds();
+        sea.SetPropertyBlock(waterProperties);
+    }
+    void SetShoreBounds(){
+        Bounds footprint=floors[0].bounds;
+        for(int i=1;i<Count;i++) footprint.Encapsulate(floors[i].bounds);
+        waterProperties.SetVector("_ShoreBounds",new Vector4(footprint.center.x,footprint.center.z,
+            footprint.extents.x,footprint.extents.z));
+        waterProperties.SetFloat("_ShoreHeight",footprint.max.y-sea.transform.position.y);
     }
     void DressCoast(){
         for(int i=0;i<Count;i++) DressEdge(Tiles[i].transform, cells[i], Width);
@@ -134,6 +142,9 @@ public sealed class RisingBoard
             waterProperties.SetVectorArray("_ImpactTiles",impactTiles);
             waterProperties.SetInteger("_ImpactCount",contacts);
             waterProperties.SetFloat("_ImpactStart",Time.timeSinceLevelLoad);
+        }
+        if(contacts>0||t>=1){
+            SetShoreBounds();
             sea.SetPropertyBlock(waterProperties);
         }
         camera.transform.position=Vector3.Lerp(camera.transform.position,CameraPosition(),t>=1 ? 1 : Mathf.Min(1,dt*6));

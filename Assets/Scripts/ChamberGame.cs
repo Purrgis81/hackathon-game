@@ -69,6 +69,9 @@ public sealed partial class ChamberGame : MonoBehaviour
     double countdownLeft;
     float startBannerLeft;
     GUIStyle startLabel;
+    MatchTextOverlay startText;
+    GameObject[] startCues;
+    int localDuelSlot;
     ChamberArrival arrival;
     ChamberAudio sound;
     DeathFocus deathFocus;
@@ -524,6 +527,7 @@ public sealed partial class ChamberGame : MonoBehaviour
     {
         var outside=Random.state;Random.InitState(seed);duelRandom=Random.state;Random.state=outside;
         participants=count;priority=(seed&int.MaxValue)%count;
+        localDuelSlot=lan.Slot;
         PrepareBots(seed);
         roundNumber=1;
         System.Array.Clear(survivalMs,0,survivalMs.Length);
@@ -576,6 +580,7 @@ public sealed partial class ChamberGame : MonoBehaviour
     }
     void LateUpdate(){
         if(board==null)return;
+        UpdateStartCue();
         if(lan.InRoom){
             lobby ??= new ChamberLobbyStage(this);
             lobby.Show(lan);
@@ -933,7 +938,8 @@ public sealed partial class ChamberGame : MonoBehaviour
         BeachResultsPresentation.LoadMatchResults(
             System.Array.ConvertAll(order,i=>players[i].Avatar.CharacterId),
             System.Array.ConvertAll(order,PlayerLabel),
-            System.Array.ConvertAll(order,i=>$"{wins[i]}승 · {survivalMs[i]/1000.0:0.000}초"));
+            System.Array.ConvertAll(order,i=>$"{wins[i]}승 · {survivalMs[i]/1000.0:0.000}초"),
+            System.Array.IndexOf(order,localDuelSlot)+1);
     }
 
     string Scores(){
@@ -956,7 +962,9 @@ public sealed partial class ChamberGame : MonoBehaviour
         GUI.Box(new Rect(center.x-46,center.y-40-t*10,92,24),$"{runner.Blocker+1}P 블록!");
         GUI.color=color;
     }
-    void OnDestroy() { lan?.Dispose();tide?.Dispose();lava?.Dispose(); if (poisonMaterial) Destroy(poisonMaterial);if(groundCrackMaterial)Destroy(groundCrackMaterial); }
+    void OnDisable() => startText?.Hide();
+
+    void OnDestroy() { startText?.Dispose();lan?.Dispose();tide?.Dispose();lava?.Dispose(); if (poisonMaterial) Destroy(poisonMaterial);if(groundCrackMaterial)Destroy(groundCrackMaterial); }
 
     void OnGUI()
     {
@@ -981,7 +989,7 @@ public sealed partial class ChamberGame : MonoBehaviour
         lan.Draw(w,h,phase==Phase.SoloReady);
         if(lan.Editing||(lan.Busy && !duel))return;
         if(CountingDown || startBannerLeft>0 && !RoundFinished){
-            DrawStartCue(w,h);
+            if (startText?.Visible != true) DrawStartCue(w,h);
             if(CountingDown)return;
         }
         if(duel)
@@ -1044,14 +1052,39 @@ public sealed partial class ChamberGame : MonoBehaviour
         }
     }
 
+    void UpdateStartCue()
+    {
+        if (lan.Editing || (lan.Busy && !duel) || (!CountingDown && (startBannerLeft <= 0 || RoundFinished)))
+        {
+            startText?.Hide();
+            return;
+        }
+
+        startCues ??= new[] {
+            MatchTextOverlay.Load("Countdown_Start"), MatchTextOverlay.Load("Countdown_1"),
+            MatchTextOverlay.Load("Countdown_2"), MatchTextOverlay.Load("Countdown_3")
+        };
+        float left = (float)countdownLeft;
+        int cue = CountingDown ? Mathf.Clamp(Mathf.CeilToInt(left), 1, 3) : 0;
+        if (startCues[cue] == null)
+        {
+            startText?.Hide();
+            return;
+        }
+        float age = CountingDown ? cue-left : .8f-startBannerLeft;
+        float scale = 1 + .16f * Mathf.Clamp01(1-age/.18f);
+        startText ??= new MatchTextOverlay(chamberCamera, transform);
+        startText.Show(startCues[cue], .65f, scale * (cue == 0 ? 2.05f : 1));
+    }
+
     void DrawStartCue(float width,float height)
     {
         startLabel ??= new GUIStyle(GUI.skin.label){alignment=TextAnchor.MiddleCenter,fontStyle=FontStyle.Bold};
         float left=(float)countdownLeft;
         int beat=Mathf.CeilToInt(left);
         float age=CountingDown ? beat-left : .8f-startBannerLeft;
-        startLabel.fontSize=Mathf.RoundToInt((CountingDown ? 70 : 44)+10*Mathf.Clamp01(1-age/.18f));
-        string label=CountingDown ? beat.ToString() : "게임 스타트!";
+        startLabel.fontSize=Mathf.RoundToInt(70+10*Mathf.Clamp01(1-age/.18f));
+        string label=CountingDown ? beat.ToString() : "START";
         var rect=new Rect(0,height*.28f,width,100);
         startLabel.normal.textColor=new Color(.08f,.14f,.16f);
         GUI.Label(new Rect(rect.x+2,rect.y+3,rect.width,rect.height),label,startLabel);

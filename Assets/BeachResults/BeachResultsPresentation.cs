@@ -34,6 +34,10 @@ public sealed class BeachResultsPresentation : MonoBehaviour
     const string SceneName = "BeachResults";
     static string[] pendingRanking;
     static string[] pendingLabels, pendingScores;
+    static int pendingLocalPlace;
+    MatchTextOverlay resultText;
+    GameObject resultCue;
+    bool localVictory;
     string[] labels, scores;
     readonly List<GameObject> copies = new();
     RankSlot[] rankSlots;
@@ -56,7 +60,12 @@ public sealed class BeachResultsPresentation : MonoBehaviour
         }
 
         var nextRanking = pendingRanking;
+        int localPlace = nextRanking == null ? 1 : pendingLocalPlace;
         pendingRanking = null;
+        pendingLocalPlace = 0;
+        localVictory = localPlace == 1;
+        if (localPlace > 0)
+            resultCue = MatchTextOverlay.Load(localVictory ? "YouWin" : "YouLose");
         SetRanking(nextRanking ?? (previewRanking is { Length: > 0 }
             ? previewRanking
             : Array.ConvertAll(placements, entry => entry.characterId)));
@@ -80,7 +89,7 @@ public sealed class BeachResultsPresentation : MonoBehaviour
     // The caller supplies character IDs in finishing order, starting with first place.
     public static AsyncOperation LoadResults(params string[] characterIds) => LoadMatchResults(characterIds, null, null);
 
-    public static AsyncOperation LoadMatchResults(string[] characterIds, string[] playerLabels, string[] scoreLabels)
+    public static AsyncOperation LoadMatchResults(string[] characterIds, string[] playerLabels, string[] scoreLabels, int localPlace = 0)
     {
         if (characterIds == null || characterIds.Length == 0 || characterIds.Length > Accents.Length)
             throw new ArgumentException("Provide one character ID per finishing place.", nameof(characterIds));
@@ -100,6 +109,10 @@ public sealed class BeachResultsPresentation : MonoBehaviour
         if ((playerLabels == null) != (scoreLabels == null) || playerLabels != null &&
             (playerLabels.Length != characterIds.Length || scoreLabels.Length != characterIds.Length))
             throw new ArgumentException("Provide a name and score for each participant.");
+        if (localPlace < 0 || localPlace > characterIds.Length)
+            throw new ArgumentOutOfRangeException(nameof(localPlace));
+
+        pendingLocalPlace = localPlace;
         pendingLabels = (string[])playerLabels?.Clone();
         pendingScores = (string[])scoreLabels?.Clone();
         pendingRanking = (string[])characterIds.Clone();
@@ -110,6 +123,7 @@ public sealed class BeachResultsPresentation : MonoBehaviour
         catch
         {
             pendingRanking = pendingLabels = pendingScores = null;
+            pendingLocalPlace = 0;
             throw;
         }
     }
@@ -190,10 +204,13 @@ public sealed class BeachResultsPresentation : MonoBehaviour
 
     void OnDisable()
     {
+        resultText?.Hide();
         if (roundPanel) Destroy(roundPanel);
         if (koreanFont) Destroy(koreanFont);
         headline = null;
     }
+
+    void OnDestroy() => resultText?.Dispose();
 
     void Update()
     {
@@ -201,6 +218,11 @@ public sealed class BeachResultsPresentation : MonoBehaviour
         EvaluatePerformers();
         stageCamera.transform.position = cameraStart + new Vector3(.16f * Mathf.Sin(elapsed * .34f), .034f * Mathf.Sin(elapsed * .51f), 0);
         stageCamera.transform.LookAt(cameraTarget);
+        if (resultCue != null)
+        {
+            resultText ??= new MatchTextOverlay(stageCamera, transform);
+            resultText.Show(resultCue, .79f, .9f, new Vector4(elapsed, localVictory ? 1 : 2, 0, 0));
+        }
     }
 
     void EvaluatePerformers()
