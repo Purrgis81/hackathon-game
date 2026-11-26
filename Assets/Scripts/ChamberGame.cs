@@ -3,7 +3,7 @@ using UnityEngine;
 
 public sealed partial class ChamberGame : MonoBehaviour
 {
-    [SerializeField] string gameTitle = "Don't Fall";
+    [SerializeField] string gameTitle = "Ground Survivor";
     public Font titleFont;
     public Transform explorer;
     public Mesh arrowheadMesh;
@@ -624,7 +624,7 @@ public sealed partial class ChamberGame : MonoBehaviour
     {
         if(phase==Phase.Title){
             if(lan.Busy)lan.Poll(Time.unscaledDeltaTime,Vector2Int.zero);
-            if(phase==Phase.Title && !lan.InRoom)
+            if(phase==Phase.Title && !lan.InRoom && !lan.Editing)
                 titleScreen.Advance(Time.unscaledDeltaTime,!lan.Busy && !lan.Editing);
             return;
         }
@@ -965,7 +965,8 @@ public sealed partial class ChamberGame : MonoBehaviour
             System.Array.ConvertAll(order,i=>players[i].Avatar.CharacterId),
             System.Array.ConvertAll(order,PlayerLabel),
             System.Array.ConvertAll(order,i=>$"{wins[i]}승 · {survivalMs[i]/1000.0:0.000}초"),
-            System.Array.IndexOf(order,localDuelSlot)+1);
+            System.Array.IndexOf(order,localDuelSlot)+1,
+            System.Array.ConvertAll(order,i=>profiles[i].ModelTint(i)));
     }
 
     string Scores(){

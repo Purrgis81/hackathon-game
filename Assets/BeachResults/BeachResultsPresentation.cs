@@ -34,6 +34,7 @@ public sealed class BeachResultsPresentation : MonoBehaviour
     const string SceneName = "BeachResults";
     static string[] pendingRanking;
     static string[] pendingLabels, pendingScores;
+    static Color[] pendingTints;
     static int pendingLocalPlace;
     MatchTextOverlay resultText;
     GameObject resultCue;
@@ -69,6 +70,16 @@ public sealed class BeachResultsPresentation : MonoBehaviour
         SetRanking(nextRanking ?? (previewRanking is { Length: > 0 }
             ? previewRanking
             : Array.ConvertAll(placements, entry => entry.characterId)));
+        if(pendingTints!=null){
+            var ink=new MaterialPropertyBlock();
+            for(int i=0;i<currentRanking.Length;i++)
+                foreach(var surface in currentRanking[i].characterRoot.GetComponentsInChildren<SkinnedMeshRenderer>()){
+                    surface.GetPropertyBlock(ink);
+                    ink.SetColor("_Color",pendingTints[i]);
+                    surface.SetPropertyBlock(ink);
+                }
+            pendingTints=null;
+        }
         labels = pendingLabels;
         scores = pendingScores;
         pendingLabels = pendingScores = null;
@@ -89,7 +100,7 @@ public sealed class BeachResultsPresentation : MonoBehaviour
     // The caller supplies character IDs in finishing order, starting with first place.
     public static AsyncOperation LoadResults(params string[] characterIds) => LoadMatchResults(characterIds, null, null);
 
-    public static AsyncOperation LoadMatchResults(string[] characterIds, string[] playerLabels, string[] scoreLabels, int localPlace = 0)
+    public static AsyncOperation LoadMatchResults(string[] characterIds, string[] playerLabels, string[] scoreLabels, int localPlace = 0, Color[] tints = null)
     {
         if (characterIds == null || characterIds.Length == 0 || characterIds.Length > Accents.Length)
             throw new ArgumentException("Provide one character ID per finishing place.", nameof(characterIds));
@@ -111,7 +122,9 @@ public sealed class BeachResultsPresentation : MonoBehaviour
             throw new ArgumentException("Provide a name and score for each participant.");
         if (localPlace < 0 || localPlace > characterIds.Length)
             throw new ArgumentOutOfRangeException(nameof(localPlace));
+        if(tints!=null && tints.Length!=characterIds.Length)throw new ArgumentException("Provide one tint per participant.",nameof(tints));
 
+        pendingTints=(Color[])tints?.Clone();
         pendingLocalPlace = localPlace;
         pendingLabels = (string[])playerLabels?.Clone();
         pendingScores = (string[])scoreLabels?.Clone();
@@ -123,6 +136,7 @@ public sealed class BeachResultsPresentation : MonoBehaviour
         catch
         {
             pendingRanking = pendingLabels = pendingScores = null;
+            pendingTints=null;
             pendingLocalPlace = 0;
             throw;
         }

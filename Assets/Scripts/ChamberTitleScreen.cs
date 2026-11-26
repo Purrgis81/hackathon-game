@@ -4,6 +4,11 @@ using UnityEngine;
 internal sealed class ChamberTitleScreen
 {
     public enum Choice { None, Friends, Bots, Profile, Solo }
+    static readonly (Choice action, string label)[] MenuItems = {
+        (Choice.Solo, "솔로 플레이"), (Choice.Friends, "멀티플레이"),
+        (Choice.Bots, "봇과 대전"), (Choice.Profile, "캐릭터 설정")
+    };
+    const int ModeCount = 3;
     const float Beat = 8.4f, Takeoff = 2.8f, Flight = .56f;
     readonly RisingBoard board;
     readonly Camera camera;
@@ -169,17 +174,26 @@ internal sealed class ChamberTitleScreen
         }
         if(Time.frameCount!=openedFrame && e.type==EventType.KeyDown){
             switch(e.keyCode){
-                case KeyCode.LeftArrow: case KeyCode.RightArrow: selection^=1; e.Use();break;
-                case KeyCode.UpArrow: case KeyCode.DownArrow: selection^=2; e.Use();break;
+                case KeyCode.LeftArrow: case KeyCode.RightArrow:
+                    if(selection<ModeCount){
+                        int step=e.keyCode==KeyCode.LeftArrow?-1:1;
+                        selection=(selection+ModeCount+step)%ModeCount;
+                    }
+                    e.Use();break;
+                case KeyCode.DownArrow: selection=ModeCount; e.Use();break;
+                case KeyCode.UpArrow:
+                    if(selection==ModeCount)selection=1;
+                    e.Use();break;
                 case KeyCode.KeypadEnter: case KeyCode.Return: case KeyCode.Space:
-                    e.Use();return (Choice)(selection+1);
+                    e.Use();return MenuItems[selection].action;
                 case KeyCode.Escape: menu=false; e.Use();return Choice.None;
             }
         }
-        for(int i=0;i<4;i++){
-            bool primary=i<2;
-            float x=w*.5f+((i&1)==0?-195:9);
-            var rect=new Rect(x,h*.79f+(primary?0:62),186,primary?51:34);
+        const float buttonWidth=186, gap=18;
+        for(int i=0;i<MenuItems.Length;i++){
+            bool primary=i<ModeCount;
+            float center=w*.5f+(primary?(i-1)*(buttonWidth+gap):0);
+            var rect=new Rect(center-buttonWidth*.5f,h*.79f+(primary?0:62),buttonWidth,primary?51:34);
             if(e.type==EventType.MouseMove && rect.Contains(e.mousePosition))selection=i;
             bool chosen=selection==i;
             if(primary){
@@ -187,9 +201,9 @@ internal sealed class ChamberTitleScreen
                 Plate(shadow,Ink,22);
                 Plate(rect,chosen?Gold:Cream,22);
             }else Plate(rect,chosen?Cream:Ink,16);
-            Label(rect,i==0?"친구와 대전":i==1?"봇과 대전":i==2?"캐릭터 설정":"혼자 연습",primary?23:15,
+            Label(rect,MenuItems[i].label,primary?23:15,
                 primary||chosen?Ink:Cream);
-            if(GUI.Button(rect,GUIContent.none,GUIStyle.none) && Time.frameCount!=openedFrame)return (Choice)(i+1);
+            if(GUI.Button(rect,GUIContent.none,GUIStyle.none) && Time.frameCount!=openedFrame)return MenuItems[i].action;
         }
         return Choice.None;
     }
@@ -215,19 +229,21 @@ internal sealed class ChamberTitleScreen
             GUIUtility.ScaleAroundPivot(Vector2.one*fit,center);
             GUIUtility.RotateAroundPivot(i%2==0?-4:4,center);
             var face=new Rect(center.x-wordWidths[i]*.5f-8,center.y-75,wordWidths[i]+16,150);
-            logoStyle.normal.textColor=Ink;
+            logoStyle.normal.textColor=logoStyle.hover.textColor=Ink;
             for(int side=0;side<8;side++){
                 float angle=side*Mathf.PI*.25f;
                 var edge=face;edge.x+=Mathf.Cos(angle)*4;edge.y+=4+Mathf.Sin(angle)*5;
                 GUI.Label(edge,words[i],logoStyle);
             }
-            logoStyle.normal.textColor=i%2==0?Cream:Gold;
+            logoStyle.normal.textColor=logoStyle.hover.textColor=i%2==0?Cream:Gold;
             GUI.Label(face,words[i],logoStyle);
             GUI.matrix=original;
         }
     }
     void Label(Rect r,string text,int size,Color color){
-        lettering.fontSize=size;lettering.normal.textColor=color;GUI.Label(r,text,lettering);
+        lettering.fontSize=size;
+        lettering.normal.textColor=lettering.hover.textColor=color;
+        GUI.Label(r,text,lettering);
     }
     static void Plate(Rect r,Color color,float radius){
         GUI.DrawTexture(r,Texture2D.whiteTexture,ScaleMode.StretchToFill,true,0,color,0,radius);

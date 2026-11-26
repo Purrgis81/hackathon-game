@@ -61,7 +61,7 @@ public sealed class ChamberAnimalAvatar
     public void Show(ChamberProfile profile, int seat)
     {
         int animal = profile.Animal == 0 ? seat : profile.Animal - 1;
-        Color color = Color.Lerp(Color.white, profile.Tint(seat), profile.Swatch == 0 ? .12f : .60f);
+        Color color = profile.ModelTint(seat);
         if (currentAnimal == animal && currentColor == color) return;
         if (currentAnimal != animal)
         {

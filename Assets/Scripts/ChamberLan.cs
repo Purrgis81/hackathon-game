@@ -36,10 +36,11 @@ public sealed partial class ChamberLan : IDisposable
     IChamberWire wire;
     Mode mode;
     bool host,previousBackground,editing,online;
-    string address="",invite="",message="",code="",draftName;
+    string address="",invite="",message="",code="";
     string steamCode="";
     int transportTab;
-    int draftColor,draftAnimal,count=1,sequence,received,sent,epoch;
+    int count=1,sequence,received,sent,epoch;
+    ChamberWardrobe wardrobe;
     float accumulator,lastSend,lastPing,connectingAt,playClock;
     const int MinReserve=8,MaxReserve=24;
     float lastHistoryAt,reserveTicks;
@@ -82,7 +83,10 @@ public sealed partial class ChamberLan : IDisposable
         previousBackground=Application.runInBackground;Application.runInBackground=true;mode=Mode.Menu;
     }
     public void OpenProfile(){
-        draftName=Local.Name;draftColor=Local.Swatch;draftAnimal=Local.Animal;editing=true;
+        if(Busy || editing)return;
+        wardrobe ??= new ChamberWardrobe(game.transform);
+        wardrobe.Open(Local);
+        editing=true;
     }
     public void HostRoom(){
         OpenMenu();
@@ -379,22 +383,14 @@ public sealed partial class ChamberLan : IDisposable
         Dispose();
         if(played)game.EndDuel();
     }
-    public void Dispose(){if(Busy)Application.runInBackground=previousBackground;Close();mode=Mode.Offline;message="";}
+    public void Dispose(){wardrobe?.Dispose();wardrobe=null;editing=false;if(Busy)Application.runInBackground=previousBackground;Close();mode=Mode.Offline;message="";}
     public void Draw(float width,float height,bool canOpen){
         if(!Busy){
             if(!canOpen)return;
             if(editing){
-                float pw=Mathf.Min(width-24,320);
-                GUILayout.BeginArea(new Rect((width-pw)/2,(height-260)/2,pw,260),GUI.skin.box);
-                GUILayout.Label("캐릭터 설정");GUILayout.Label("이름 (최대 12자)");
-                draftName=GUILayout.TextField(draftName,12);
-                GUILayout.Label("동물");draftAnimal=ChamberProfile.ChooseAnimal(draftAnimal);
-                GUILayout.Label("캐릭터 색상");
-                draftColor=ChamberProfile.ChooseColor(draftColor);
-                GUILayout.BeginHorizontal();
-                if(GUILayout.Button("저장")){Local=ChamberProfile.Create(draftName,draftColor,draftAnimal);Local.Save();game.ApplyProfiles();editing=false;}
-                if(GUILayout.Button("취소"))editing=false;
-                GUILayout.EndHorizontal();GUILayout.EndArea();
+                var action=wardrobe.Draw();
+                if(action==ChamberWardrobe.Action.Save){Local=wardrobe.Profile;Local.Save();game.ApplyProfiles();}
+                if(action!=ChamberWardrobe.Action.None){editing=false;wardrobe.Close();}
             }else{
                 if(GUI.Button(new Rect((width-200)/2,height-201,200,34),"캐릭터 설정"))OpenProfile();
                 if(GUI.Button(new Rect((width-200)/2,height-160,200,34),"친구와 대전"))OpenMenu();
