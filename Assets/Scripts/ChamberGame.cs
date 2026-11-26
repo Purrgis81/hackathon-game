@@ -40,6 +40,8 @@ public sealed class ChamberGame : MonoBehaviour
     int participants=1, priority;
     bool duel => participants>1;
     ChamberLan lan;
+    ChamberLobbyStage lobby;
+    public float LobbySeatX(int slot) => lobby!=null ? lobby.SeatX(slot) : (slot+.5f)/Capacity;
     AbyssLighting lighting;
     readonly bool[] exits=new bool[100];
     const float SpikeLead=2f;
@@ -142,7 +144,7 @@ public sealed class ChamberGame : MonoBehaviour
         poisonCenter=-1;
         arrow.Clear();
         tide?.Clear();lava?.Clear();tideCasts=liftCasts=0;
-        int[] starts={0,2,6,8,4};
+        int[] starts={0,2,6,8};
         for(int i=0;i<Capacity;i++){
             players[i].Reset(duel ? starts[i] : 4,board);
             players[i].Feet.gameObject.SetActive(i<participants);
@@ -450,6 +452,12 @@ public sealed class ChamberGame : MonoBehaviour
     public void ConfirmLocalInput(int slot)=>players[slot].ConfirmInput();
     void LateUpdate(){
         if(board==null)return;
+        if(lan.InRoom){
+            lobby ??= new ChamberLobbyStage(this);
+            lobby.Show(lan);
+            return;
+        }
+        lobby?.Hide();
         if(lan.Guest)for(int i=0;i<participants;i++)
             players[i].Present(board,players[i].Duration(stepSeconds),Mathf.Min(.06f,Time.unscaledDeltaTime),RoundFinished);
         foreach(var patch in poison)patch.Draw(elapsed);

@@ -9,16 +9,17 @@ using UnityEngine;
 
 public sealed class ChamberLan : IDisposable
 {
-    public const int Port=47737,Capacity=5,TickRate=120;
+    public const int Port=47737,Capacity=4,TickRate=120;
     const float Step=1f/TickRate;
     const int HistorySize=4096,Window=72;
     enum Mode { Offline,Menu,Allocating,Connecting,Room,Play }
-    enum Kind : byte { Hello=1,Lobby,Start,Profile,Input,Frames,Ping,Pong,Leave }
+    const byte ProtocolVersion=7;
+    enum Kind : byte { Hello=1,Lobby,Start,Profile,Input,Frames,Ping,Pong,Leave,SetReady }
     sealed class Peer
     {
         public NetworkConnection Connection;
         public int Slot,ReceivedInput,Ack;
-        public bool Ready;
+        public bool HasProfile,MatchReady;
         public ChamberProfile Profile;
         public readonly Queue<byte[]> Control=new Queue<byte[]>();
         public readonly SortedDictionary<int,byte> Inputs=new SortedDictionary<int,byte>();
@@ -45,6 +46,12 @@ public sealed class ChamberLan : IDisposable
     public int BufferedTicks=>received-sequence;
     public bool Busy=>mode!=Mode.Offline;
     public bool Playing=>mode==Mode.Play;
+    public bool InRoom=>mode==Mode.Room;
+    public int OccupiedSeats=>count;
+    int readySeats;
+    bool requestedReady;
+    public bool IsSeatReady(int seat)=>seat>0&&seat<count&&(readySeats & (1<<seat))!=0;
+    public bool CanStart=>host&&InRoom&&count>=2&&peers.All(p=>p.HasProfile&&p.MatchReady);
     public bool Guest=>Playing&&!host;
     public bool Editing=>editing;
     public ChamberLan(ChamberGame owner){
@@ -105,7 +112,7 @@ public sealed class ChamberLan : IDisposable
     static int Read(byte[] b,int at)=>BitConverter.ToInt32(b,at);
     static void Put(byte[] b,int at,int value){for(int n=0;n<4;n++)b[at+n]=(byte)(value>>(8*n));}
     static byte[] Packet(Kind kind,int size=16,int a=0,int b=0,int c=0){
-        var bytes=new byte[size];bytes[0]=83;bytes[1]=67;bytes[2]=6;bytes[3]=(byte)kind;
+        var bytes=new byte[size];bytes[0]=83;bytes[1]=67;bytes[2]=ProtocolVersion;bytes[3]=(byte)kind;
         Put(bytes,4,a);Put(bytes,8,b);Put(bytes,12,c);return bytes;
     }
     static byte[] Identity(Kind kind,int slot,ChamberProfile profile){
@@ -117,15 +124,26 @@ public sealed class ChamberLan : IDisposable
         if(bytes.Length!=56||length<0||length>40)throw new InvalidOperationException("프로필 메시지 오류");
         return ChamberProfile.Create(System.Text.Encoding.UTF8.GetString(bytes,16,length),Read(bytes,8));
     }
-    void UpdateLobby(){
-        count=1;foreach(var p in peers)if(p.Ready){p.Slot=count++;roster[p.Slot]=p.Profile;}
-        foreach(var p in peers)if(p.Ready){
-            p.Control.Enqueue(Packet(Kind.Lobby,a:p.Slot,b:count));
-            for(int i=0;i<count;i++)p.Control.Enqueue(Identity(Kind.Profile,i,roster[i]));
+    void UpdateLobby(bool rosterChanged=true){
+        count=1;
+        readySeats=0;
+        foreach(var p in peers)if(p.HasProfile){
+            p.Slot=count++;
+            roster[p.Slot]=p.Profile;
+            if(p.MatchReady)readySeats |= 1<<p.Slot;
+        }
+        foreach(var p in peers)if(p.HasProfile){
+            p.Control.Enqueue(Packet(Kind.Lobby,a:p.Slot,b:count,c:readySeats));
+            if(rosterChanged)for(int i=0;i<count;i++)p.Control.Enqueue(Identity(Kind.Profile,i,roster[i]));
         }
     }
+    public void SetReady(bool ready){
+        if(!InRoom||host||requestedReady==ready)return;
+        requestedReady=ready;
+        peers[0].Control.Enqueue(Packet(Kind.SetReady,a:ready?1:0));
+    }
     public void StartMatch(){
-        if(!host||mode!=Mode.Room||count<2||peers.Any(p=>!p.Ready))return;
+        if(!CanStart)return;
         int seed=Guid.NewGuid().GetHashCode();
         foreach(var p in peers)p.Control.Enqueue(Packet(Kind.Start,a:seed,b:count));
         Begin(seed);
@@ -151,7 +169,6 @@ public sealed class ChamberLan : IDisposable
             for(int i=peers.Count-1;i>=0;i--)ReadPeer(peers[i]);
             if(wire==null)return;
             if(mode==Mode.Connecting&&Time.realtimeSinceStartup-connectingAt>12)throw new InvalidOperationException("UDP 접속 시간이 초과되었습니다.");
-            if(host&&mode==Mode.Room&&count==Capacity)StartMatch();
             if(Playing){
                 byte key=Encode(input);
                 if(key!=0&&!game.RoundFinished){
@@ -231,13 +248,20 @@ public sealed class ChamberLan : IDisposable
                 UpdateLobby();return;
             }
             if(type!=NetworkEvent.Type.Data)continue;
-            if(bytes.Length<16||bytes[0]!=83||bytes[1]!=67||bytes[2]!=6)throw new InvalidOperationException("같은 버전의 UDP 게임을 사용하세요.");
+            if(bytes.Length<16||bytes[0]!=83||bytes[1]!=67||bytes[2]!=ProtocolVersion){
+                if(host&&InRoom){wire.Disconnect(p.Connection);peers.Remove(p);UpdateLobby();return;}
+                throw new InvalidOperationException("같은 버전의 UDP 게임을 사용하세요.");
+            }
             var kind=(Kind)bytes[3];int a=Read(bytes,4),b=Read(bytes,8),c=Read(bytes,12);
             if(kind==Kind.Ping){if(host)wire.Send(p.Connection,Packet(Kind.Pong,a:a),false);continue;}
             if(kind==Kind.Pong&&!host){PingMs=Mathf.Clamp(unchecked(Environment.TickCount-a),0,9999);continue;}
-            if(host&&mode==Mode.Room&&!p.Ready&&kind==Kind.Hello){p.Profile=ReadIdentity(bytes);p.Ready=true;UpdateLobby();continue;}
-            if(!host&&mode==Mode.Connecting&&kind==Kind.Lobby&&a>=1&&a<b&&b<=Capacity){Slot=a;count=b;mode=Mode.Room;continue;}
-            if(!host&&mode==Mode.Room&&kind==Kind.Lobby&&a>=1&&a<b&&b<=Capacity){Slot=a;count=b;continue;}
+            if(host&&InRoom&&!p.HasProfile&&kind==Kind.Hello){p.Profile=ReadIdentity(bytes);p.HasProfile=true;UpdateLobby();continue;}
+            if(host&&InRoom&&p.HasProfile&&kind==Kind.SetReady&&(a==0||a==1)){
+                p.MatchReady=a==1;UpdateLobby(false);continue;
+            }
+            if(!host&&(mode==Mode.Connecting||InRoom)&&kind==Kind.Lobby&&a>=1&&a<b&&b<=Capacity){
+                Slot=a;count=b;readySeats=c;mode=Mode.Room;continue;
+            }
             if(!host&&mode==Mode.Room&&kind==Kind.Profile&&a>=0&&a<count){roster[a]=ReadIdentity(bytes);continue;}
             if(!host&&mode==Mode.Room&&kind==Kind.Start&&b==count){Begin(a);continue;}
             if(host&&Playing&&kind==Kind.Input){
@@ -268,13 +292,21 @@ public sealed class ChamberLan : IDisposable
     }
     void Close(){
         epoch++;wire?.Dispose();wire=null;peers.Clear();commands.Clear();pending.Clear();
-        foreach(var q in inputs)q.Clear();count=1;Slot=0;host=false;PingMs=0;
+        foreach(var q in inputs)q.Clear();count=1;Slot=0;host=false;PingMs=0;readySeats=0;requestedReady=false;
     }
     void Fail(string text){
         bool played=Playing;Close();mode=Mode.Menu;message=text;Debug.LogWarning("Chamber UDP: "+text);
         if(played)game.EndDuel();
     }
-    public void Leave(){bool played=Playing;Dispose();if(played)game.EndDuel();}
+    public void Leave(){
+        bool played=Playing;
+        if(wire!=null&&wire.Created){
+            foreach(var peer in peers)wire.Disconnect(peer.Connection);
+            wire.Update();
+        }
+        Dispose();
+        if(played)game.EndDuel();
+    }
     public void Dispose(){if(Busy)Application.runInBackground=previousBackground;Close();mode=Mode.Offline;message="";}
     public void Draw(float width,float height,bool canOpen){
         if(!Busy){
@@ -296,9 +328,10 @@ public sealed class ChamberLan : IDisposable
             return;
         }
         if(Playing){if(GUI.Button(new Rect(width-86,64,70,27),"방 나가기"))Leave();return;}
+        if(InRoom){DrawRoom(width,height);return;}
         float w=Mathf.Min(420,width-20);
         GUILayout.BeginArea(new Rect((width-w)/2,(height-390)/2,w,390),GUI.skin.box);
-        GUILayout.Label("친구와 UDP 대전 · 2~5명");
+        GUILayout.Label($"친구와 UDP 대전 · 2~{Capacity}명");
         if(mode==Mode.Menu){
             if(GUILayout.Button("온라인 방 만들기 · 초대 코드",GUILayout.Height(33)))OnlineRoom(true);
             code=GUILayout.TextField(code,12);
@@ -310,16 +343,40 @@ public sealed class ChamberLan : IDisposable
             GUILayout.Label("방장 IP");address=GUILayout.TextField(address,45);
             if(GUILayout.Button("IP로 직접 참가"))JoinRoom(address);
             GUILayout.Label(message);
-        }else if(mode==Mode.Room){
-            GUILayout.Label($"참가 {count}/5 · 내 캐릭터 {Slot+1}P");
-            if(host){
-                GUILayout.Label(online?"친구에게 알려줄 초대 코드":"직접 연결 주소");
-                GUILayout.TextField(invite);
-                if(count>=2&&GUILayout.Button("현재 인원으로 시작"))StartMatch();
-            }
-            GUILayout.Label("5명이 모이면 자동으로 시작합니다.");
         }else GUILayout.Label("방장에게 연결하는 중…");
         if(GUILayout.Button("돌아가기"))Leave();
         GUILayout.EndArea();
+    }
+
+    GUIStyle roomTitle,seatName,seatRole;
+    void DrawRoom(float width,float height){
+        roomTitle ??= new GUIStyle(GUI.skin.label){fontSize=26,fontStyle=FontStyle.Bold,alignment=TextAnchor.MiddleCenter};
+        seatName ??= new GUIStyle(GUI.skin.label){fontSize=16,fontStyle=FontStyle.Bold,alignment=TextAnchor.MiddleCenter,clipping=TextClipping.Clip,wordWrap=false};
+        seatRole ??= new GUIStyle(GUI.skin.label){alignment=TextAnchor.MiddleCenter};
+        GUI.Label(new Rect(0,height*.09f,width,42),"탐험대 대기실",roomTitle);
+        GUI.Label(new Rect(0,height*.09f+43,width,24),$"참가자   {count} / {Capacity}",seatRole);
+        if(host){
+            float box=Mathf.Min(width-24,420),x=(width-box)/2,y=height*.09f+73;
+            GUI.Label(new Rect(x,y,80,26),online?"초대 코드":"직접 연결 IP",seatRole);
+            GUI.TextField(new Rect(x+82,y,box-144,26),invite);
+            if(GUI.Button(new Rect(x+box-58,y,58,26),"복사"))GUIUtility.systemCopyBuffer=invite;
+        }
+        float span=Mathf.Abs(game.LobbySeatX(1)-game.LobbySeatX(0))*width*.98f;
+        for(int i=0;i<Capacity;i++){
+            float x=game.LobbySeatX(i)*width;
+            float y=height*.66f;
+            GUI.Label(new Rect(x-span/2,y,span,22),i<count?$"{i+1}P{(i==0?" · 방장":"")}{(i==Slot?" · 나":"")}":$"{i+1}P",seatRole);
+            var name=i<count?roster[i].Label(i):"빈자리";
+            GUI.Label(new Rect(x-span/2,y+22,span,26),name,seatName);
+            if(i>0&&i<count)GUI.Label(new Rect(x-span/2,y-23,span,22),IsSeatReady(i)?"준비 완료":"준비 전",seatRole);
+        }
+        float footer=height-60;
+        if(host){
+            bool previous=GUI.enabled;
+            GUI.enabled=previous&&CanStart;
+            if(GUI.Button(new Rect(width/2-140,footer,174,36),count<2?"친구를 기다리는 중":CanStart?"게임 시작":"준비를 기다리는 중"))StartMatch();
+            GUI.enabled=previous;
+        }else if(GUI.Button(new Rect(width/2-140,footer,174,36),requestedReady?"준비 취소":"준비"))SetReady(!requestedReady);
+        if(GUI.Button(new Rect(width/2+42,footer,98,36),"방 나가기"))Leave();
     }
 }
