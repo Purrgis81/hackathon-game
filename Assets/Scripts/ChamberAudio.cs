@@ -10,10 +10,9 @@ public sealed class ChamberAudio : MonoBehaviour
     AudioSource collisions;
     AudioSource hazardWarnings;
     AudioClip waveWarning,lavaWarning;
-    AudioClip[] steps, traps, hits;
-    int foot;
+    AudioClip[] traps, hits;
     float targetVolume;
-    float targetCutoff = 1650f;
+    float targetCutoff = 8500f;
     const float MusicVolume = .33f;
 
     void Awake()
@@ -38,9 +37,8 @@ public sealed class ChamberAudio : MonoBehaviour
         room.Play();
         music.loop = true;
         music.volume = 0;
-        music.clip = Clip("BuriedHall");
-        steps = new[] { Clip("FootLeft"), Clip("FootRight") };
-        lift = Clip("FootLift");
+        music.clip = Clip("PartyTheme");
+        lift = Clip("JumpStep");
         traps = new[] { Clip("SpikeRise"), Clip("ArrowLoose"), Clip("PoisonSpill"),block,Clip("WaveSurge"),Clip("LavaImpact") };
         hits = new[] { Clip("SpikeHit"), Clip("ArrowHit"), Clip("PoisonHit"),block,Clip("WaveHit"),Clip("LavaImpact") };
         latch = Clip("PlateLatch");
@@ -64,8 +62,7 @@ public sealed class ChamberAudio : MonoBehaviour
         hazardWarnings.Stop();
         if (!music.isPlaying) music.Play();
         targetVolume = MusicVolume * .58f;
-        targetCutoff = 1650f;
-        foot = 0;
+        targetCutoff = 8500f;
     }
 
     void Update()
@@ -79,7 +76,7 @@ public sealed class ChamberAudio : MonoBehaviour
     {
         targetVolume = MusicVolume;
         targetCutoff = 15000f;
-        movement.PlayOneShot(lift,.24f);
+        movement.PlayOneShot(lift,.36f);
     }
 
     public void Block(float pan)
@@ -87,12 +84,6 @@ public sealed class ChamberAudio : MonoBehaviour
         collisions.pitch=1;
         collisions.panStereo=Mathf.Clamp(pan,-.65f,.65f);
         collisions.PlayOneShot(block,.88f);
-    }
-
-    public void Footfall()
-    {
-        movement.PlayOneShot(steps[foot], .66f);
-        foot = 1-foot;
     }
 
     public void Latch(float pan, bool urgent = false)

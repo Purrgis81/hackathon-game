@@ -8,6 +8,7 @@ public sealed class ChamberAnimalAvatar
     GameObject model;
     Renderer[] surfaces;
     int currentAnimal = -1;
+    public string CharacterId => Animals[currentAnimal];
     Color currentColor;
 
     public ChamberAnimalAvatar(Transform anchor, Transform sceneBear = null)

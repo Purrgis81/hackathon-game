@@ -1,5 +1,13 @@
 # Stone Chamber audio credits
 
+Audio supplied for the five-round party match:
+
+| Game use | Supplied file |
+| --- | --- |
+| Movement (JumpStep) | bestuploadsever67aryan-jump-sound-531048.mp3 |
+| Awards (PodiumFanfare) | emand_edroff-victory-bell-success-fanfare-576275.mp3 |
+| Game theme (PartyTheme) | bearstockmusic-cartoon-funny-theme-578155 (1).mp3 |
+
 The sources below use [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), except Lava splash, which uses [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
 
 | Game sound | Source and author | Source files |

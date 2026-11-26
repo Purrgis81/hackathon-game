@@ -255,6 +255,17 @@ public static class ChamberBotSmoke
         Check(restarted&&lan.IsBot(1)&&game.Bot(1).RememberedMoves==0,"Round restart lost bot settings or retained stale memory");
         lan.Leave();Check(!lan.Busy&&game.Bot(1)==null,"Practice exit retained a bot controller");
         Note("Offline practice advances without any network transport; round restart keeps seats and clears short-term memory; exit restores solo play");
+        lan.OpenBotRoom();lan.StartMatch();
+        for(int round=1;round<=5;round++){
+            Check(game.CountingDown&&Get<int>(game,"roundNumber")==round,"Unexpected bot practice round");
+            for(int i=0;i<40&&game.CountingDown;i++)lan.Poll(.1f,Vector2Int.zero);
+            Call(game,"KnockOut",0,TrapKind.Spike,1f);
+            Call(game,"FinishIfDecided",1f);
+            for(int i=0;i<40&&lan.Playing&&!game.CountingDown;i++)lan.Poll(.1f,Vector2Int.zero);
+            Check(Get<int[]>(game,"wins")[1]==round,"Missing bot win");
+        }
+        Check(game.MatchFinished&&lan.ResultsReady&&!lan.Busy,"Bot practice never released the five-round results");
+        Note("Five offline rounds include the bot in the standings and release the podium without a network peer");
     }
     sealed class FakeWire:IChamberWire {
         public FakeWire partner;public bool accept,connect;public bool Created=>true;

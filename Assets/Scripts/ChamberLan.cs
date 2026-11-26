@@ -13,12 +13,12 @@ public sealed partial class ChamberLan : IDisposable
     const float Step=1f/TickRate;
     const int HistorySize=4096,Window=72;
     enum Mode { Offline,Menu,Allocating,Connecting,Room,Play }
-    const byte ProtocolVersion=14;
+    const byte ProtocolVersion=15;
     enum Kind : byte { Hello=1,Lobby,Start,Profile,Input,Frames,Ping,Pong,Leave,SetReady,Bots }
     sealed class Peer
     {
         public ChamberConnection Connection;
-        public int Slot,ReceivedInput,Ack;
+        public int Slot,ReceivedInput,Ack,Applied;
         public bool HasProfile,MatchReady;
         public ChamberProfile Profile;
         public readonly Queue<byte[]> Control=new Queue<byte[]>();
@@ -50,6 +50,7 @@ public sealed partial class ChamberLan : IDisposable
     public int BufferedTicks=>received-sequence;
     public bool Busy=>mode!=Mode.Offline;
     public bool Playing=>mode==Mode.Play;
+    public bool ResultsReady {get;private set;}
     public bool InRoom=>mode==Mode.Room;
     public int OccupiedSeats=>count;
     int readySeats;
@@ -77,6 +78,7 @@ public sealed partial class ChamberLan : IDisposable
     }
     public void OpenMenu(){
         if(Busy)return;
+        ResultsReady=false;
         previousBackground=Application.runInBackground;Application.runInBackground=true;mode=Mode.Menu;
     }
     public void HostRoom(){
@@ -189,7 +191,14 @@ public sealed partial class ChamberLan : IDisposable
     }
     public void Poll(float dt,Vector2Int input){
         try{
-            if(practice){if(Playing){QueueHostInput(input);AdvanceHost(dt);}return;}
+            if(practice){
+                if(Playing){
+                    QueueHostInput(input);
+                    AdvanceHost(dt);
+                    if(game.MatchFinished)CompleteMatch();
+                }
+                return;
+            }
             if(mode==Mode.Allocating){
                 if(Time.realtimeSinceStartup-connectingAt>25)Fail("온라인 방 연결 시간이 초과되었습니다.");return;
             }
@@ -227,11 +236,21 @@ public sealed partial class ChamberLan : IDisposable
                 }
             }
             wire.Flush();
+            if(Playing && game.MatchFinished && (!host || peers.All(p=>p.Applied>=sequence))){
+                if(!host){SendCommands();wire.Flush();}
+                foreach(var peer in peers)wire.Disconnect(peer.Connection);
+                wire.Update();
+                CompleteMatch();
+            }
         }catch(Exception e){Fail(e.Message);}
+    }
+    void CompleteMatch(){
+        Dispose();
+        ResultsReady=true;
     }
     void AdvanceHost(float dt){
         accumulator+=Mathf.Min(dt,.1f);
-        while(accumulator>=Step){
+        while(accumulator>=Step&&!game.MatchFinished){
             accumulator-=Step;int packed=0;
             for(int i=0;i<count;i++){
                 byte k=IsBot(i)?Encode(game.BotInput(i,Step)):inputs[i].Count>0?inputs[i].Dequeue():(byte)0;
@@ -258,7 +277,7 @@ public sealed partial class ChamberLan : IDisposable
         if(BufferedTicks==0)playClock=Mathf.Min(playClock,Step);
     }
     void SendCommands(){
-        var bytes=Packet(Kind.Input,16+commands.Count*8,a:received,b:commands.Count);
+        var bytes=Packet(Kind.Input,16+commands.Count*8,a:received,b:commands.Count,c:sequence);
         int at=16;foreach(var command in commands){Put(bytes,at,command.Key);Put(bytes,at+4,command.Value);at+=8;}
         wire.Send(peers[0].Connection,bytes,false);
     }
@@ -280,6 +299,7 @@ public sealed partial class ChamberLan : IDisposable
             }
             if(type==NetworkEvent.Type.Disconnect){
                 peers.Remove(p);
+                if(host&&Playing&&game.MatchFinished)return;
                 if(Playing||!host)throw new InvalidOperationException("참가자와의 연결이 종료되었습니다.");
                 UpdateLobby();return;
             }
@@ -302,8 +322,9 @@ public sealed partial class ChamberLan : IDisposable
             if(!host&&InRoom&&kind==Kind.Bots&&(a&1)==0&&(a>>count)==0){botMask=a;botCodes=b;continue;}
             if(!host&&mode==Mode.Room&&kind==Kind.Start&&b==count){Begin(a);continue;}
             if(host&&Playing&&kind==Kind.Input){
-                if(a<0||a>sequence||b<0||b>8||bytes.Length!=16+b*8)continue;
+                if(a<0||a>sequence||c<0||c>a||b<0||b>8||bytes.Length!=16+b*8)continue;
                 p.Ack=Mathf.Max(p.Ack,a);
+                p.Applied=Mathf.Max(p.Applied,c);
                 for(int i=0;i<b;i++){
                     int n=Read(bytes,16+i*8),key=Read(bytes,20+i*8);
                     if(n>p.ReceivedInput&&n<=p.ReceivedInput+8&&key>=1&&key<=4)p.Inputs[n]=(byte)key;

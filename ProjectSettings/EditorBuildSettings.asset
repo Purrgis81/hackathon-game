@@ -8,5 +8,8 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/StoneChamber.unity
     guid: c79a5510425944947b8192d0980707d3
+  - enabled: 1
+    path: Assets/BeachResults/BeachResults.unity
+    guid: b641759634926464a9f0e1026596da3d
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0

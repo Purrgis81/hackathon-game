@@ -33,6 +33,8 @@ public sealed class BeachResultsPresentation : MonoBehaviour
 
     const string SceneName = "BeachResults";
     static string[] pendingRanking;
+    static string[] pendingLabels, pendingScores;
+    string[] labels, scores;
     readonly List<GameObject> copies = new();
     RankSlot[] rankSlots;
     Entry[] currentRanking;
@@ -40,7 +42,7 @@ public sealed class BeachResultsPresentation : MonoBehaviour
     float elapsed;
     Texture2D roundPanel;
     Font koreanFont;
-    GUIStyle headline, rank, player, button;
+    GUIStyle headline, rank, player, score, button;
     static readonly Color Ink = new(0.075f, .23f, .27f);
     static readonly Color[] Accents = { new(1f,.8f,.38f), new(.79f,.79f,1f), new(1f,.73f,.77f), new(.75f,.91f,.86f) };
 
@@ -58,10 +60,27 @@ public sealed class BeachResultsPresentation : MonoBehaviour
         SetRanking(nextRanking ?? (previewRanking is { Length: > 0 }
             ? previewRanking
             : Array.ConvertAll(placements, entry => entry.characterId)));
+        labels = pendingLabels;
+        scores = pendingScores;
+        pendingLabels = pendingScores = null;
+        PlayFanfare();
+    }
+
+    void PlayFanfare()
+    {
+        if (!stageCamera.TryGetComponent<AudioListener>(out _))
+            stageCamera.gameObject.AddComponent<AudioListener>();
+        var fanfare = gameObject.AddComponent<AudioSource>();
+        fanfare.playOnAwake = false;
+        fanfare.clip = Resources.Load<AudioClip>("Sound/PodiumFanfare");
+        fanfare.volume = .65f;
+        fanfare.Play();
     }
 
     // The caller supplies character IDs in finishing order, starting with first place.
-    public static AsyncOperation LoadResults(params string[] characterIds)
+    public static AsyncOperation LoadResults(params string[] characterIds) => LoadMatchResults(characterIds, null, null);
+
+    public static AsyncOperation LoadMatchResults(string[] characterIds, string[] playerLabels, string[] scoreLabels)
     {
         if (characterIds == null || characterIds.Length == 0 || characterIds.Length > Accents.Length)
             throw new ArgumentException("Provide one character ID per finishing place.", nameof(characterIds));
@@ -78,6 +97,11 @@ public sealed class BeachResultsPresentation : MonoBehaviour
         if (!Application.CanStreamedLevelBeLoaded(SceneName))
             throw new InvalidOperationException("Add BeachResults to the active Unity Build Profile.");
 
+        if ((playerLabels == null) != (scoreLabels == null) || playerLabels != null &&
+            (playerLabels.Length != characterIds.Length || scoreLabels.Length != characterIds.Length))
+            throw new ArgumentException("Provide a name and score for each participant.");
+        pendingLabels = (string[])playerLabels?.Clone();
+        pendingScores = (string[])scoreLabels?.Clone();
         pendingRanking = (string[])characterIds.Clone();
         try
         {
@@ -85,7 +109,7 @@ public sealed class BeachResultsPresentation : MonoBehaviour
         }
         catch
         {
-            pendingRanking = null;
+            pendingRanking = pendingLabels = pendingScores = null;
             throw;
         }
     }
@@ -126,6 +150,7 @@ public sealed class BeachResultsPresentation : MonoBehaviour
         }
 
         currentRanking = ordered;
+        labels = scores = null;
         foreach (var entry in placements)
             entry.characterRoot.gameObject.SetActive(Array.IndexOf(ordered, entry) >= 0);
         for (int i = 0; i < ordered.Length; i++)
@@ -211,9 +236,9 @@ public sealed class BeachResultsPresentation : MonoBehaviour
         float center = (left + right) * .5f;
         GUI.color = Color.white;
         DrawPanel(new Rect(center - 146, top + 28, 292, 62), new Color(.98f, .98f, .89f, .94f));
-        GUI.Label(new Rect(center - 146, top + 28, 292, 62), "경기 결과", headline);
+        GUI.Label(new Rect(center - 146, top + 28, 292, 62), scores == null ? "경기 결과" : "5라운드 종합 순위", headline);
 
-        float rowWidth = Mathf.Min(776, right - left - 40);
+        float rowWidth = Mathf.Min(1200, right - left - 40);
         float gap = 8, rowX = center - rowWidth * .5f, rowY = bottom - 75;
         float cardWidth = (rowWidth - gap * currentRanking.Length) / (currentRanking.Length + 1);
         for (int i = 0; i < currentRanking.Length; i++)
@@ -223,11 +248,17 @@ public sealed class BeachResultsPresentation : MonoBehaviour
             DrawPanel(box, new Color(.98f, .98f, .91f, .94f));
             DrawPanel(new Rect(x + 8, rowY + 8, 36, 32), Accents[i]);
             GUI.Label(new Rect(x + 8, rowY + 8, 36, 32), (i + 1).ToString(), rank);
-            GUI.Label(new Rect(x + 53, rowY, cardWidth - 55, 48), currentRanking[i].displayName, player);
+            GUI.Label(new Rect(x + 53, rowY, cardWidth - 60, scores == null ? 48 : 27),
+                labels == null ? currentRanking[i].displayName : labels[i], player);
+            if (scores != null)
+                GUI.Label(new Rect(x + 53, rowY + 24, cardWidth - 60, 22), scores[i], score);
         }
         var replay = new Rect(rowX + (cardWidth + gap) * currentRanking.Length, rowY, cardWidth, 48);
         DrawPanel(replay, new Color(.09f, .30f, .31f, .98f));
         if (GUI.Button(replay, "다시 보기", button)) Replay();
+        var home = new Rect(right - 166, top + 32, 138, 44);
+        DrawPanel(home, new Color(.09f, .30f, .31f, .98f));
+        if (GUI.Button(home, "처음으로", button)) SceneManager.LoadScene("StoneChamber");
         GUI.color = previousColor;
         GUI.matrix = previous;
     }
@@ -246,6 +277,8 @@ public sealed class BeachResultsPresentation : MonoBehaviour
         headline = MakeStyle(32, TextAnchor.MiddleCenter, Ink);
         rank = MakeStyle(19, TextAnchor.MiddleCenter, Ink);
         player = MakeStyle(18, TextAnchor.MiddleLeft, Ink);
+        player.clipping = TextClipping.Clip;
+        score = MakeStyle(15, TextAnchor.MiddleLeft, Ink);
         button = MakeStyle(18, TextAnchor.MiddleCenter, Color.white);
         button.hover.textColor = new Color(1, .87f, .52f);
     }

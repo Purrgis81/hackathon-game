@@ -121,7 +121,12 @@ public static class ChamberScene
         RenderSettings.ambientMode = AmbientMode.Flat;
         RenderSettings.ambientLight = new Color(.32f,.41f,.48f);
         EditorSceneManager.SaveScene(scene, ScenePath);
-        EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
+        var buildScenes = new System.Collections.Generic.List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
+        const string results = "Assets/BeachResults/BeachResults.unity";
+        buildScenes.RemoveAll(scene => scene.path == ScenePath || scene.path == results);
+        buildScenes.Insert(0, new EditorBuildSettingsScene(ScenePath, true));
+        buildScenes.Add(new EditorBuildSettingsScene(results, true));
+        EditorBuildSettings.scenes = buildScenes.ToArray();
         AssetDatabase.SaveAssets();
     }
 }

@@ -13,7 +13,7 @@ public sealed partial class ChamberGame : MonoBehaviour
     const float SpikeSeconds = 0.46f;
     const float FinalArenaRampSeconds=60f, FinalArenaMaxTempo=2f, MinimumTrapWarning=.6f;
     const string RecordKey = "StoneChamber.Best";
-    enum Phase { Arrival, SoloReady, Countdown, AwaitStep, FirstStep, Warning, Strike, Rest, Collapse, TideWarning, TideTravel, LavaWarning, LavaTravel, GroundWarning, GroundCracking, GroundGone, Dead, Returning }
+    enum Phase { Arrival, SoloReady, Countdown, AwaitStep, FirstStep, Warning, Strike, Rest, Collapse, TideWarning, TideTravel, LavaWarning, LavaTravel, GroundWarning, GroundCracking, GroundGone, Dead, Returning, Results }
     enum PatternKind { Automatic, Spike, Arrow, ArrowRows, Poison, Wave, Lava, GroundRenewal, Collapse }
     Phase phase;
     ArrowVolley arrow;
@@ -36,6 +36,10 @@ public sealed partial class ChamberGame : MonoBehaviour
     readonly ChamberRunner[] players=new ChamberRunner[Capacity];
     ChamberRunner first => players[0];
     readonly int[] wins=new int[Capacity];
+    const int MatchRounds=5;
+    int roundNumber;
+    readonly long[] survivalMs=new long[Capacity];
+    readonly int[] tiePriority=new int[Capacity];
     readonly float[] hits=new float[Capacity], knockedOutAt=new float[Capacity];
     readonly TrapKind[] causes=new TrapKind[Capacity];
     readonly Vector3[] destinations=new Vector3[Capacity];
@@ -59,7 +63,8 @@ public sealed partial class ChamberGame : MonoBehaviour
     float nextReveal, nextCollapse;
     string result;
     UnityEngine.Random.State duelRandom;
-    public bool RoundFinished => phase==Phase.Dead || phase==Phase.Returning;
+    public bool MatchFinished => phase==Phase.Results;
+    public bool RoundFinished => phase==Phase.Dead || phase==Phase.Returning || MatchFinished;
     public bool CountingDown => phase==Phase.Countdown;
     double countdownLeft;
     float startBannerLeft;
@@ -205,11 +210,16 @@ public sealed partial class ChamberGame : MonoBehaviour
 
     void OpenForRetry(float dt)
     {
+        if(MatchFinished)return;
         transitionTime += dt;
         if (phase == Phase.Dead)
         {
             deathFocus.Frame(transitionTime);
             if (transitionTime < DeathFocus.Hold + DeathFocus.Close) return;
+            if(duel){
+                if(roundNumber==MatchRounds){phase=Phase.Results;return;}
+                roundNumber++;
+            }
             transitionTime -= DeathFocus.Hold + DeathFocus.Close;
             ResetBoard();
             sound.ResumeMusic();
@@ -508,6 +518,14 @@ public sealed partial class ChamberGame : MonoBehaviour
         var outside=Random.state;Random.InitState(seed);duelRandom=Random.state;Random.state=outside;
         participants=count;priority=(seed&int.MaxValue)%count;
         PrepareBots(seed);
+        roundNumber=1;
+        System.Array.Clear(survivalMs,0,survivalMs.Length);
+        var draw=new System.Random(seed);
+        for(int i=0;i<count;i++)tiePriority[i]=i;
+        for(int i=count-1;i>0;i--){
+            int j=draw.Next(i+1);
+            (tiePriority[i],tiePriority[j])=(tiePriority[j],tiePriority[i]);
+        }
         System.Array.Clear(wins,0,wins.Length);ApplyProfiles();ResetBoard();BeginCountdown();sound.ResumeMusic();
     }
     public void EndDuel(){
@@ -525,7 +543,8 @@ public sealed partial class ChamberGame : MonoBehaviour
             unchecked{
                 int h=((int)phase*31+wave)*107+board.Count;
                 h=h*107+groundSignature;
-                for(int i=0;i<participants;i++){var p=players[i];h=h*107+p.Cell;h=h*107+p.Target;h=h*31+wins[i];h=h*2+(p.Alive?1:0);}
+                h=h*31+roundNumber;
+                for(int i=0;i<participants;i++){var p=players[i];h=h*107+p.Cell;h=h*107+p.Target;h=h*31+wins[i];h=h*31+survivalMs[i].GetHashCode();h=h*2+(p.Alive?1:0);}
                 for(int i=0;i<participants;i++){
                     h=h*2+(players[i].Sliding?1:0);h=h*2+(players[i].Stunned?1:0);h=h*7+players[i].WakeCount;
                     h=h*107+players[i].LastWave;h=h*107+Mathf.RoundToInt(players[i].SlideSpeed*100);
@@ -568,7 +587,12 @@ public sealed partial class ChamberGame : MonoBehaviour
 #endif
         chamberCamera.fieldOfView=Mathf.Max(38f,Camera.HorizontalToVerticalFieldOfView(42f,chamberCamera.aspect));
         if(lan.Editing)return;
-        if(lan.Busy){lan.Poll(Time.unscaledDeltaTime,ReadDirection());return;}
+        if(lan.Busy){
+            lan.Poll(Time.unscaledDeltaTime,ReadDirection());
+            if(lan.ResultsReady)ShowMatchResults();
+            return;
+        }
+        if(MatchFinished)return;
         if(phase==Phase.Arrival){Tick(Time.deltaTime);return;}
         if(RoundFinished){OpenForRetry(Time.unscaledDeltaTime);return;}
         Move(first,ReadDirection());
@@ -761,7 +785,7 @@ public sealed partial class ChamberGame : MonoBehaviour
         for(int i=0;i<participants;i++){
             var p=players[i];if(!p.Alive)continue;
             bool lost=touched&&hits[i]<=hit+.00001f;
-            if(p.Travel(Vector3.Lerp(p.Feet.position,destinations[i],hit),used,p.Duration(stepSeconds),lost))sound.Footfall();
+            p.Travel(Vector3.Lerp(p.Feet.position,destinations[i],hit),used,p.Duration(stepSeconds),lost);
             if(lost){
                 if(causes[i]==TrapKind.Wave){p.WavePush(tide.PushDirection,tideCasts,tide.Speed,board);sound.WaveCaught();}
                 else KnockOut(i,causes[i],elapsed+used);
@@ -779,6 +803,7 @@ public sealed partial class ChamberGame : MonoBehaviour
         if(duel)sound.Eliminated(cause);else sound.Hit(cause);
     }
     void FinishIfDecided(float when){
+        if(RoundFinished)return;
         int alive=0,winner=-1,last=-1;
         for(int i=0;i<participants;i++){
             if(players[i].Alive){alive++;winner=i;}
@@ -786,7 +811,12 @@ public sealed partial class ChamberGame : MonoBehaviour
         }
         if(alive>(duel?1:0))return;
         elapsed=when;phase=Phase.Dead;transitionTime=0;
-        if(duel){result=alive==1?$"{winner+1}P 승리":"동시 탈락 · 무승부";if(winner>=0)wins[winner]++;}
+        if(duel){
+            result=alive==1?$"{winner+1}P 승리":"동시 탈락 · 무승부";
+            if(winner>=0)wins[winner]++;
+            for(int i=0;i<participants;i++)
+                survivalMs[i]+=Mathf.RoundToInt((players[i].Alive?when:knockedOutAt[i])*1000f);
+        }
         deathFocus.Show(causes[last],players[last].Feet.position);
         foreach(var tile in tiles)tile.dust.Pause();
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
@@ -877,6 +907,20 @@ public sealed partial class ChamberGame : MonoBehaviour
         GUI.contentColor=original;
     }
 
+    void ShowMatchResults(){
+        int[] order=new int[participants];
+        for(int i=0;i<participants;i++)order[i]=i;
+        System.Array.Sort(order,(a,b)=>{
+            int comparison=wins[b].CompareTo(wins[a]);
+            if(comparison==0)comparison=survivalMs[b].CompareTo(survivalMs[a]);
+            return comparison!=0?comparison:tiePriority[a].CompareTo(tiePriority[b]);
+        });
+        BeachResultsPresentation.LoadMatchResults(
+            System.Array.ConvertAll(order,i=>players[i].Avatar.CharacterId),
+            System.Array.ConvertAll(order,PlayerLabel),
+            System.Array.ConvertAll(order,i=>$"{wins[i]}승 · {survivalMs[i]/1000.0:0.000}초"));
+    }
+
     string Scores(){
         string text="";
         for(int i=0;i<participants;i++)text+=(i==0?"":"   ")+$"{i+1}P {wins[i]}승";
@@ -912,7 +956,7 @@ public sealed partial class ChamberGame : MonoBehaviour
 
     void DrawGameUI()
     {
-        if (phase == Phase.Arrival || phase == Phase.Returning) return;
+        if (phase == Phase.Arrival || phase == Phase.Returning || MatchFinished) return;
         title ??= new GUIStyle(GUI.skin.label) { fontSize = 24, fontStyle = FontStyle.Bold };
         score ??= new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleRight, fontSize = 16 };
         hint ??= new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 15 };
@@ -936,7 +980,7 @@ public sealed partial class ChamberGame : MonoBehaviour
                 if(age>=0&&age<.46f)DrawBlock(actor,age,scale,h);
             }
             string connection=lan.Guest ? $"{lan.PingMs} ms" : "방장";
-            GUI.Box(new Rect(12,62,240,28),$"{PlayerLabel(lan.Slot)} · {ChamberLan.TickRate} Hz · {connection}");
+            GUI.Box(new Rect(12,62,310,28),$"{roundNumber}/{MatchRounds}라운드 · {PlayerLabel(lan.Slot)} · {ChamberLan.TickRate} Hz · {connection}");
         }
         if(!duel&&first.Stunned){
             var point=chamberCamera.WorldToScreenPoint(first.View.position+Vector3.up*1.65f);
