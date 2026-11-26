@@ -13,14 +13,13 @@ public sealed partial class ChamberGame : MonoBehaviour
     const float SpikeSeconds = 0.46f;
     const float FinalArenaRampSeconds=60f, FinalArenaMaxTempo=2f, MinimumTrapWarning=.6f;
     const string RecordKey = "StoneChamber.Best";
-    enum Phase { Arrival, SoloReady, Countdown, AwaitStep, FirstStep, Warning, Strike, Rest, Collapse, LiftWarning, LiftTravel, TideWarning, TideTravel, LavaWarning, LavaTravel, Dead, Returning }
-    enum PatternKind { Automatic, Spike, Arrow, Poison, Wave, Lava, Lift, Collapse }
+    enum Phase { Arrival, SoloReady, Countdown, AwaitStep, FirstStep, Warning, Strike, Rest, Collapse, TideWarning, TideTravel, LavaWarning, LavaTravel, Dead, Returning }
+    enum PatternKind { Automatic, Spike, Arrow, ArrowRows, Poison, Wave, Lava, Collapse }
     Phase phase;
     ArrowVolley arrow;
     TidalWave tide;
     LavaBarrage lava;
     int tideCasts;
-    int liftCasts;
     bool HasControlledPlayers {
         get{
             for(int i=0;i<participants;i++)if(players[i].Alive&&(players[i].Sliding||players[i].Stunned))return true;
@@ -32,7 +31,6 @@ public sealed partial class ChamberGame : MonoBehaviour
     readonly List<PoisonFloor> livePoison=new List<PoisonFloor>();
     int spiralIndex,spikeCasts,arrowCasts,finalBursts;
     bool spiralWave,spiralPause,singleShelter;
-    float nextLift,liftLength;
     string patternName;
     readonly ChamberProfile[] profiles=new ChamberProfile[Capacity];
     readonly ChamberRunner[] players=new ChamberRunner[Capacity];
@@ -171,7 +169,7 @@ public sealed partial class ChamberGame : MonoBehaviour
         potion.Clear();
         spikeOrder.Clear();
         casts=0;
-        lateCasts=arrowCasts=spikeCasts=finalBursts=0;nextLift=19;
+        lateCasts=arrowCasts=spikeCasts=finalBursts=0;
         spiralWave=singleShelter=false;spiral.Clear();livePoison.Clear();patternName="";
         nextBurstAt=28f;
         globalSpikes=false;
@@ -179,7 +177,7 @@ public sealed partial class ChamberGame : MonoBehaviour
         followPotion=false;
         poisonCenter=-1;
         arrow.Clear();
-        tide?.Clear();lava?.Clear();tideCasts=liftCasts=0;
+        tide?.Clear();lava?.Clear();tideCasts=0;
         int[] starts={0,2,6,8};
         for(int i=0;i<Capacity;i++){
             players[i].Reset(duel ? starts[i] : 4,board);
@@ -224,9 +222,6 @@ public sealed partial class ChamberGame : MonoBehaviour
             remaining=RisingBoard.CollapseLead;phase=Phase.Collapse;board.Preview(0);
             sound.Latch(0,true);return;
         }
-        if(requested==PatternKind.Lift || (automatic && elapsed>=nextLift&&!lava.Active&&!HasControlledPlayers)){
-            StartLift(requested==PatternKind.Lift?variant:-1);return;
-        }
         singleShelter=spiralWave=false;spiral.Clear();patternName="";
         System.Array.Clear(dangerous,0,dangerous.Length);
         System.Array.Clear(exits,0,exits.Length);
@@ -234,7 +229,7 @@ public sealed partial class ChamberGame : MonoBehaviour
         bool potionWave=requested==PatternKind.Poison || (automatic && wave>=3&&wave%3==0);
         globalSpikes=(requested==PatternKind.Spike && variant>=4) ||
             (automatic && elapsed>=nextBurstAt&&!potionWave&&!followPotion&&!HasControlledPlayers);
-        bool useArrow=requested==PatternKind.Arrow || (automatic && wave>0&&wave%4!=2&&!potionLesson&&!globalSpikes);
+        bool useArrow=requested==PatternKind.Arrow || requested==PatternKind.ArrowRows || (automatic && wave>0&&wave%4!=2&&!potionLesson&&!globalSpikes);
         bool useSpike=requested==PatternKind.Spike || (automatic && wave!=1&&!potionLesson);
         int leader=wave%participants;
         while(!players[leader].Alive)leader=(leader+1)%participants;
@@ -269,9 +264,9 @@ public sealed partial class ChamberGame : MonoBehaviour
             wave++;phase=Phase.LavaWarning;remaining=warningSeconds=lava.WarningSeconds;return;
         }
         if(useArrow){
-            int pattern=requested==PatternKind.Arrow?variant:arrowCasts++%7;
+            int pattern=requested==PatternKind.ArrowRows?7:requested==PatternKind.Arrow?variant:arrowCasts++%8;
             arrow.Plan(board,origin,horizontal,wave%4<2?1:-1,pattern,exits,Pressure);
-            patternName=new[]{"화살 · 단발","화살 · 왕복","화살 · 평행 사격","화살 · 교차 사격","화살 · 시차 연사","화살 · 사방 순환","화살 · 팔방 회전"}[pattern];
+            patternName=new[]{"화살 · 단발","화살 · 왕복","화살 · 평행 사격","화살 · 교차 사격","화살 · 시차 연사","화살 · 사방 순환","화살 · 팔방 회전","화살 · 한 줄 안전지대"}[pattern];
             if(pattern>=5){useSpike=false;potionWave=false;}
         }
         spikeOrder.Clear();onsets.Clear();budget=0;
@@ -356,16 +351,6 @@ public sealed partial class ChamberGame : MonoBehaviour
         }
         spiral.RemoveAll(i=>exits[i]);if(outward)spiral.Reverse();
     }
-    void StartLift(int variant=-1){
-        int lead=wave%participants;while(!players[lead].Alive)lead=(lead+1)%participants;
-        int origin=players[lead].Target;
-        board.PlanLift(origin,variant>=0?variant:liftCasts++);arrow.PlanLift(board,Pressure);
-        spikeOrder.Clear();onsets.Clear();budget=0;potion.Clear();
-        patternName="승강 시험 · 내려갈 곳과 복귀할 곳을 고르세요";
-        remaining=warningSeconds=PatternWarning(2.8f);phase=Phase.LiftWarning;sound.Latch(0);
-        nextLift=elapsed+PatternInterval(26);
-    }
-
     bool Neighbors(int a, int b)
     {
         var delta=board.Cell(a)-board.Cell(b);
@@ -494,7 +479,7 @@ public sealed partial class ChamberGame : MonoBehaviour
                     h=h*2+(players[i].Sliding?1:0);h=h*2+(players[i].Stunned?1:0);h=h*7+players[i].WakeCount;
                     h=h*107+players[i].LastWave;h=h*107+Mathf.RoundToInt(players[i].SlideSpeed*100);
                 }
-                h=h*107+arrow.Signature;h=h*7+board.LiftPattern;
+                h=h*107+arrow.Signature;
                 foreach(int n in spikeOrder)h=h*107+n;
                 h=h*107+tide.Signature;h=h*107+lava.Signature;
                 h=h*107+Mathf.RoundToInt(finalArenaSeconds*1000);h=h*107+Mathf.RoundToInt(patternTempo*1000);
@@ -593,12 +578,6 @@ public sealed partial class ChamberGame : MonoBehaviour
                     if(onset+SpikeSeconds-strikeAge>.00001f)slice=Mathf.Min(slice,onset+SpikeSeconds-strikeAge);
                 }
             }
-            if(phase==Phase.LiftTravel){
-                float age=liftLength-remaining;
-                float depth=Mathf.Min(Mathf.Clamp01((age+slice)/.55f),1-Mathf.Clamp01((age+slice-ArrowVolley.LiftRiseAt)/ArrowVolley.LiftRiseSeconds));
-                board.LiftHeight(depth);board.PreviewLift(1);
-                arrow.Sample(age+slice,sound);
-            }
             for(int i=0;i<participants;i++)if(players[i].Alive){
                 var p=players[i];
                 destinations[i]=p.NextPosition(slice,p.Duration(stepSeconds),board);
@@ -623,9 +602,6 @@ public sealed partial class ChamberGame : MonoBehaviour
         }
         if (phase == Phase.FirstStep)
             tiles[openingTile].ShowWarning(1-remaining/warningSeconds);
-        else if(phase==Phase.LiftWarning){
-            board.PreviewLift(1-remaining/warningSeconds);arrow.Draw(1-remaining/warningSeconds,warningSeconds-remaining);
-        }
         else if(phase==Phase.Collapse)board.Preview(1-remaining/RisingBoard.CollapseLead);
         else if (phase == Phase.Warning)
         {
@@ -673,10 +649,7 @@ public sealed partial class ChamberGame : MonoBehaviour
             if(local>=-.00001f && local<SpikeSeconds-.00001f)
                 spikeHit=Mathf.Min(spikeHit,tiles[spikeOrder[k]].Contact(from,to,local,slice,globalSpikes,SpikeSeconds));
         }
-        bool lift=phase==Phase.LiftTravel;
-        float flightAge=lift?liftLength-remaining:age;
-        float arrowHit=(striking||lift)&&arrow.Armed
-            ? arrow.Contact(from,to,flightAge,slice):float.PositiveInfinity;
+        float arrowHit=striking&&arrow.Armed ? arrow.Contact(from,to,age,slice):float.PositiveInfinity;
         float poisonHit=float.PositiveInfinity;
         foreach(var patch in livePoison)poisonHit=Mathf.Min(poisonHit,patch.Contact(from,to,elapsed,slice));
         float hit = Mathf.Min(Mathf.Min(spikeHit,arrowHit),poisonHit);
@@ -770,12 +743,6 @@ public sealed partial class ChamberGame : MonoBehaviour
         }
         if(phase==Phase.TideTravel){
             tide.Clear();phase=Phase.Rest;remaining=PatternInterval(.18f);return;
-        }
-        if(phase==Phase.LiftWarning){
-            phase=Phase.LiftTravel;remaining=liftLength=arrow.FlightTime+.25f;board.LiftHeight(0);return;
-        }
-        if(phase==Phase.LiftTravel){
-            board.RestoreLift();arrow.Clear();patternName="";phase=Phase.Rest;remaining=PatternInterval(.25f);return;
         }
         if (phase == Phase.Warning || phase == Phase.FirstStep)
         {
@@ -886,10 +853,8 @@ public sealed partial class ChamberGame : MonoBehaviour
             var point=chamberCamera.WorldToScreenPoint(first.View.position+Vector3.up*1.65f);
             DrawStun(first,point,scale,h,true);
         }
-        if(!string.IsNullOrEmpty(patternName)&&(phase==Phase.Warning||phase==Phase.Strike||phase==Phase.LiftWarning||phase==Phase.LiftTravel||phase==Phase.TideWarning||phase==Phase.TideTravel||phase==Phase.LavaWarning||phase==Phase.LavaTravel))
+        if(!string.IsNullOrEmpty(patternName)&&(phase==Phase.Warning||phase==Phase.Strike||phase==Phase.TideWarning||phase==Phase.TideTravel||phase==Phase.LavaWarning||phase==Phase.LavaTravel))
             GUI.Box(new Rect((w-276)/2,h-57,276,28),patternName);
-        if(phase==Phase.LiftWarning||phase==Phase.LiftTravel)
-            GUI.Box(new Rect((w-440)/2,h-122,440,30),"민트 안전 · 주황 하층 위험 · 분홍 복귀 위험");
         if(lava.Active)GUI.Box(new Rect((w-276)/2,h-91,276,28),"용암 분출 · 붉은 표적 주의");
         if(phase==Phase.Collapse){
             GUI.Box(new Rect((w-250)/2,h-68,250,34),$"갈라진 발판 붕괴  {remaining:0.0}초  ·  안쪽으로!");

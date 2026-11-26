@@ -19,31 +19,6 @@ public sealed class RisingBoard
     public int Radius => Width/2;
     public int NextCount => (Width-1)*(Width-1);
     public float Center => Width%2==0 ? Spacing*.5f : 0;
-    readonly List<int> lifts=new List<int>();
-    readonly int[] liftRisk=new int[100];
-    public int LiftPattern {get;private set;}
-    public bool LiftHorizontal=>LiftPattern%2==0;
-    public int LiftRisk(int index)=>liftRisk[index];
-    public bool Lowered {get;private set;}
-    public bool OnLift(int cell)=>lifts.Contains(cell);
-    public void PlanLift(int origin,int pattern=0){
-        lifts.Clear();System.Array.Clear(liftRisk,0,liftRisk.Length);LiftPattern=pattern%4;
-        int lo=-(Width-1)/2;
-        for(int i=0;i<Count;i++){
-            var c=cells[i];int x=c.x-lo,y=c.y-lo;
-            bool down=LiftPattern==0?x%3!=2:LiftPattern==1?y%3!=2:
-                LiftPattern==2?(x/2+y/2)%2==0:(x+y)%3!=2;
-            if(!down)continue;
-            lifts.Add(i);liftRisk[i]=(LiftHorizontal?y:x)%3;
-        }
-        PreviewLift(0);
-    }
-    public void PreviewLift(float t){foreach(int i in lifts)Tiles[i].ShowWarning(t,-4-liftRisk[i]);}
-    public void LiftHeight(float depth){
-        Lowered=true;
-        foreach(int i in lifts)SetHeight(i,-2.8f*Mathf.SmoothStep(0,1,depth));
-    }
-    public void RestoreLift(){foreach(int i in lifts){SetHeight(i,0);Tiles[i].warning.enabled=false;}lifts.Clear();Lowered=false;}
     public int At(int x,int y)=>indices[new Vector2Int(x,y)];
     int fallingEnd;
     float fallAge;
@@ -67,7 +42,7 @@ public sealed class RisingBoard
         }
     }
     public Vector2Int Cell(int index)=>cells[index];
-    public int Neighbor(int index,Vector2Int dir)=>indices.TryGetValue(cells[index]+dir,out int n)&&n<Count && (!Lowered||OnLift(index)==OnLift(n)) ? n : -1;
+    public int Neighbor(int index,Vector2Int dir)=>indices.TryGetValue(cells[index]+dir,out int n)&&n<Count ? n : -1;
     public int Nearest(Vector3 position){
         int result=0;float distance=float.PositiveInfinity;
         for(int i=0;i<Count;i++){
@@ -81,7 +56,7 @@ public sealed class RisingBoard
     public void Resize(int width){
         waterProperties.Clear();
         sea.SetPropertyBlock(null);
-        RestoreLift();Width=Mathf.Clamp(width,3,10);fallingEnd=0;fallAge=0;camera.transform.position=CameraPosition();
+        Width=Mathf.Clamp(width,3,10);fallingEnd=0;fallAge=0;camera.transform.position=CameraPosition();
         for(int i=0;i<Tiles.Length;i++){
             Tiles[i].gameObject.SetActive(i<Count);
             SetHeight(i,0);

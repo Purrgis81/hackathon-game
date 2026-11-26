@@ -4,9 +4,8 @@ using UnityEngine;
 public enum ChamberDebugPattern
 {
     SpikeSpread, SpikeInward, SpikeOutward, SpikeRush, GlobalSpikes, SingleShelter,
-    ArrowSingle, ArrowReturn, ArrowParallel, ArrowCross, ArrowBurst, ArrowFourWay, ArrowEightWay,
-    PoisonCross, PoisonLine, PoisonStar, Wave, Lava,
-    LiftColumns, LiftRows, LiftBlocks, LiftDiagonal, Collapse
+    ArrowSingle, ArrowReturn, ArrowParallel, ArrowCross, ArrowBurst, ArrowFourWay, ArrowEightWay, ArrowLineSafe,
+    PoisonCross, PoisonLine, PoisonStar, Wave, Lava, Collapse
 }
 
 // These controls only exist in the Editor and development players. Network
@@ -16,9 +15,8 @@ public sealed partial class ChamberGame
     static readonly string[] DebugPatternLabels={
         "가시 · 순차 확산", "가시 · 안쪽 나선", "가시 · 바깥 나선", "가시 · 쉬고 쇄도",
         "가시 · 전역", "가시 · 안전 1칸", "화살 · 단발", "화살 · 왕복",
-        "화살 · 평행", "화살 · 교차", "화살 · 시차 연사", "화살 · 사방", "화살 · 팔방",
-        "독 · 십자", "독 · 직선", "독 · 별", "파도", "용암",
-        "승강 · 세로 띠", "승강 · 가로 띠", "승강 · 블록", "승강 · 대각선", "발판 붕괴"
+        "화살 · 평행", "화살 · 교차", "화살 · 시차 연사", "화살 · 사방", "화살 · 팔방", "화살 · 한 줄 안전지대",
+        "독 · 십자", "독 · 직선", "독 · 별", "파도", "용암", "발판 붕괴"
     };
 
     bool debugOpen,debugSession;
@@ -66,7 +64,7 @@ public sealed partial class ChamberGame
         lighting.Follow(first.View);
         deathFocus.Reveal(1);transitionTime=0;
         sound.ResumeMusic();
-        nextCollapse=elapsed+12;nextLift=elapsed+26;nextBurstAt=elapsed+28;
+        nextCollapse=elapsed+12;nextBurstAt=elapsed+28;
         phase=Phase.Rest;remaining=.1f;
     }
 
@@ -87,10 +85,10 @@ public sealed partial class ChamberGame
         int variant=0,index=(int)selected;
         if(selected<=ChamberDebugPattern.SingleShelter){kind=PatternKind.Spike;variant=index;}
         else if(selected<=ChamberDebugPattern.ArrowEightWay){kind=PatternKind.Arrow;variant=index-(int)ChamberDebugPattern.ArrowSingle;}
+        else if(selected==ChamberDebugPattern.ArrowLineSafe)kind=PatternKind.ArrowRows;
         else if(selected<=ChamberDebugPattern.PoisonStar){kind=PatternKind.Poison;variant=index-(int)ChamberDebugPattern.PoisonCross;}
         else if(selected==ChamberDebugPattern.Wave)kind=PatternKind.Wave;
         else if(selected==ChamberDebugPattern.Lava)kind=PatternKind.Lava;
-        else if(selected<=ChamberDebugPattern.LiftDiagonal){kind=PatternKind.Lift;variant=index-(int)ChamberDebugPattern.LiftColumns;}
         else kind=PatternKind.Collapse;
         Warn(kind,variant);
         debugMessage=DebugPatternLabels[index]+(debugAutomatic?" · 예고부터 실행 중 (이후 자동 진행)":" · 예고부터 실행 중 (이후 대기)");
