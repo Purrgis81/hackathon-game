@@ -14,7 +14,7 @@ public sealed class PotionVolley : MonoBehaviour
 
     void Awake()
     {
-        var template=GetComponent<ChamberGame>().tiles[0].spikes.GetChild(0).GetComponent<Renderer>().sharedMaterial;
+        var template=GetComponent<ChamberGame>().trapMetal;
         glass=new Material(Resources.Load<Shader>("PotionGlass"));
         brew=new Material(template){ color=new Color(.53f,.045f,.79f) };
         brew.EnableKeyword("_EMISSION"); brew.SetColor("_EmissionColor",new Color(.29f,.025f,.38f));

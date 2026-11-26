@@ -1,5 +1,11 @@
-Shader "Stone Chamber/Drowned Ruins"
+Shader "Stone Chamber/Coastal Sea"
 {
+    Properties
+    {
+        _SurfaceNoise ("Roystan wave noise", 2D) = "gray" {}
+        _SurfaceDistortion ("Roystan wave distortion", 2D) = "gray" {}
+        [HideInInspector] _ImpactStart ("Impact time", Float) = -1000
+    }
     SubShader
     {
         Tags { "RenderType"="Opaque" }
@@ -9,37 +15,45 @@ Shader "Stone Chamber/Drowned Ruins"
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma target 3.0
             #include "UnityCG.cginc"
             struct V {float4 pos:SV_POSITION; float2 world:TEXCOORD0;};
+            sampler2D _SurfaceNoise, _SurfaceDistortion;
+            float _ImpactStart;
+            int _ImpactCount;
+            float4 _ImpactTiles[19]; // Largest falling edge is 10x10 -> 9x9.
             V vert(appdata_base v) { V o; o.pos=UnityObjectToClipPos(v.vertex); o.world=mul(unity_ObjectToWorld,v.vertex).xz; return o; }
-            float hash(float2 p) {return frac(sin(dot(p,float2(41.37,287.9)))*43758.5);}
-            float masonry(float2 p)
-            {
-                float ring=length(p-float2(2,4));
-                float sector=floor((atan2(p.y-4,p.x-2)+3.142)*13);
-                float arc=(1-smoothstep(.22,.30,abs(ring-8.4)))*step(.23,hash(float2(sector,4)));
-                float2 grid=abs(frac(p/5.2+.5)-.5)*5.2;
-                float2 cell=floor(p/5.2+.5);
-                float pier=1-smoothstep(.49,.57,max(grid.x,grid.y));
-                float wall=(1-smoothstep(.18,.24,grid.y))*step(.64,hash(cell+9));
-                return max(arc,max(wall,pier));
-            }
             fixed4 frag(V i):SV_Target
             {
-                float2 w=i.world;
-                float2 p=float2(w.x*.92+w.y*.39,w.y*.92-w.x*.39);
+                float2 p=i.world;
                 float t=_Time.y;
-                float swell=sin(w.y*2.5+.54*sin(w.x*1.7+t*.29)+t*.48);
-                float mist=.5+.5*sin(w.x*.38+w.y*.24+.95*sin(w.y*.63));
-                float gleam=smoothstep(.85,1,swell)*smoothstep(.15,.93,mist);
-                float3 water=lerp(float3(.024,.042,.073),float3(.062,.129,.163),mist)+gleam*float3(.022,.052,.052);
-                float2 reflected=p+float2(.13*swell,-.67);
-                water=lerp(water,float3(.030,.068,.087),masonry(reflected)*.6);
-                float base=masonry(p);
-                float cap=masonry(p-float2(.04,.26));
-                float joint=.77+.23*step(.1,frac((p.x+p.y)*1.68));
-                float3 ruins=lerp(float3(.043,.078,.106),float3(.100,.155,.176)*joint,cap);
-                return fixed4(lerp(water,ruins,max(base,cap)),1);
+                // Roystan Toon Water: scroll a noise texture through an RG distortion field.
+                float2 bend=tex2D(_SurfaceDistortion,p*.032+t*float2(.006,-.003)).rg*2-1;
+                float2 uv=p*float2(.034,.072)+t*float2(.006,-.009)+bend*.15;
+                float wave=tex2D(_SurfaceNoise,uv).r;
+                float swell=sin(p.x*.22+p.y*.15-t*.36+bend.x*.8);
+                float3 color=lerp(float3(.045,.31,.35),float3(.12,.56,.54),
+                                  saturate(.30+.19*swell+.30*wave));
+                color+=float3(.029,.060,.052)*smoothstep(.65,.83,wave);
+
+                float age=t-_ImpactStart;
+                if(age>=0 && age<1.15 && _ImpactCount>0)
+                {
+                    float distanceToEdge=1e4;
+                    for(int k=0;k<_ImpactCount;k++)
+                    {
+                        float2 q=abs(p-_ImpactTiles[k].xy)-_ImpactTiles[k].zw;
+                        distanceToEdge=min(distanceToEdge,length(max(q,0))+min(max(q.x,q.y),0));
+                    }
+                    float travel=age/1.15;
+                    float radius=.12+1.35*travel;
+                    float noise=tex2D(_SurfaceNoise,p*.26+bend*.14+t*.026).r;
+                    float edge=distanceToEdge+(noise-.5)*.34;
+                    float rim=1-smoothstep(.09,.34,abs(edge-radius));
+                    float foam=rim*smoothstep(.16,.54,noise+.22*(1-travel))*(1-smoothstep(.45,1,travel));
+                    color=lerp(color,float3(.78,.94,.86),foam*.94);
+                }
+                return fixed4(color,1);
             }
             ENDCG
         }

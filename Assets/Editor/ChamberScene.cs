@@ -8,7 +8,7 @@ public static class ChamberScene
 {
     const string ScenePath = "Assets/Scenes/StoneChamber.unity";
     const string Materials = "Assets/Art/Materials/";
-    const string Kenney = "Assets/Art/Kenney/";
+    const string Coast = "Assets/Art/Coast/";
 
     public static void OpenAndPlay()
     {
@@ -33,38 +33,6 @@ public static class ChamberScene
         return obj;
     }
 
-    static GameObject Solid(string name, Transform parent, Vector3 position, Vector3 size, Material material)
-    {
-        var obj = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        obj.name = name;
-        obj.transform.SetParent(parent, false);
-        obj.transform.localPosition = position;
-        obj.transform.localScale = size;
-        obj.GetComponent<Renderer>().sharedMaterial = material;
-        Object.DestroyImmediate(obj.GetComponent<Collider>());
-        return obj;
-    }
-
-    // Normalize the four imported FBXs by their rendered bounds, keeping their authored proportions.
-    static void Model(string name, Transform parent, Vector3 foot, float size, bool fitHeight, Material palette)
-    {
-        var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(Kenney + name + ".fbx");
-        var obj = (GameObject)PrefabUtility.InstantiatePrefab(prefab, parent);
-        var renderers = obj.GetComponentsInChildren<Renderer>();
-        Bounds bounds = renderers[0].bounds;
-        foreach (var r in renderers)
-        {
-            bounds.Encapsulate(r.bounds);
-            var slots = r.sharedMaterials;
-            for (int i = 0; i < slots.Length; i++) slots[i] = palette;
-            r.sharedMaterials = slots;
-        }
-        float scale = size / (fitHeight ? bounds.size.y : Mathf.Max(bounds.size.x, bounds.size.z));
-        Vector3 offset = obj.transform.position - new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);
-        obj.transform.localScale *= scale;
-        obj.transform.position = parent.TransformPoint(foot) + offset * scale;
-    }
-
     static Mesh SpikeMesh()
     {
         var mesh = new Mesh { name = "Forged spike" };
@@ -87,22 +55,24 @@ public static class ChamberScene
         AssetDatabase.Refresh();
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene);
         var room = Node("Buried chamber", null, Vector3.zero).transform;
-        var dark = Surface("Basalt", new Color(.13f,.19f,.19f));
         var bronze = Surface("Bronze trim", new Color(.67f,.47f,.22f), .42f);
         var steel = Surface("Spike steel", new Color(.89f,.21f,.075f), .67f);
         steel.SetFloat("_Metallic", .28f);
-        var floorMaterial = AssetDatabase.LoadAssetAtPath<Material>(Materials + "Chamber Floor.mat");
+        var floor = AssetDatabase.LoadAssetAtPath<GameObject>(Coast + "floor.prefab");
         var border = new Material(Shader.Find("Stone Chamber/Hazard Border"));
         AssetDatabase.CreateAsset(border, Materials + "Trap warning.mat");
         var spikeMesh = SpikeMesh();
         var game = room.gameObject.AddComponent<ChamberGame>();
+        game.arrowheadMesh = spikeMesh;
+        game.trapMetal = steel;
         game.tiles = new SpikeTile[9];
         for (int i = 0; i < 9; i++)
         {
-            var cell = Node("Tile " + (i + 1), room, new Vector3((i%3-1)*2.1f, 0, (i/3-1)*2.1f)).transform;
+            var cell = Node("Tile " + (i + 1), room, new Vector3(i%3-1, 0, i/3-1)*RisingBoard.Spacing).transform;
             var tile = cell.gameObject.AddComponent<SpikeTile>();
             game.tiles[i] = tile;
-            Model("floor", cell, Vector3.zero, 2.04f, false, floorMaterial);
+            PrefabUtility.InstantiatePrefab(floor,cell);
+            RisingBoard.DressEdge(cell,new Vector2Int(i%3-1,i/3-1),3);
             var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
             Object.DestroyImmediate(quad.GetComponent<Collider>());
             quad.name = "Countdown inlay";
@@ -114,16 +84,8 @@ public static class ChamberScene
             tile.warning.sharedMaterial = border;
             tile.warning.shadowCastingMode = ShadowCastingMode.Off;
             tile.warning.enabled = false;
-            tile.spikes = Node("Spike cluster", cell, Vector3.up*.035f).transform;
-            for (int s = 0; s < 4; s++)
-            {
-                var pos = new Vector3(s%2==0 ? -.46f : .46f, .012f, s/2==0 ? -.46f : .46f);
-                Solid("Socket", cell, pos, new Vector3(.36f,.02f,.36f), dark);
-                var spike = Node("Spike", tile.spikes, pos);
-                spike.AddComponent<MeshFilter>().sharedMesh = spikeMesh;
-                spike.AddComponent<MeshRenderer>().sharedMaterial = steel;
-            }
-            tile.spikes.gameObject.SetActive(false);
+            tile.stakeMesh = AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Art/Coast/Wooden Stake.asset");
+            tile.stakeMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Coast/Wooden Stake.mat");
             var dust = Node("Stone chips", cell, Vector3.up*.12f);
             dust.transform.localRotation = Quaternion.Euler(-90,0,0);
             tile.dust = dust.AddComponent<ParticleSystem>();
@@ -142,6 +104,7 @@ public static class ChamberScene
             dustRenderer.mesh = spikeMesh;
             dustRenderer.sharedMaterial = bronze;
         }
+        PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(Coast + "Coastal Sea.prefab"),room);
         game.explorer = Node("Explorer", room, Vector3.zero).transform;
         PrefabUtility.InstantiatePrefab(Resources.Load<GameObject>("ChamberAnimals/Bear"), game.explorer);
         game.explorer.rotation = Quaternion.Euler(0,180,0);

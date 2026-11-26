@@ -4,6 +4,8 @@ using UnityEngine;
 public sealed partial class ChamberGame : MonoBehaviour
 {
     public Transform explorer;
+    public Mesh arrowheadMesh;
+    public Material trapMetal;
     public SpikeTile[] tiles;
     public Camera chamberCamera;
     [Min(0.01f)] public float stepSeconds = 0.16f;
@@ -381,6 +383,7 @@ public sealed partial class ChamberGame : MonoBehaviour
     }
 
     void AddSpike(int cell,float onset){
+        if(!tiles[cell].CanErupt)return;
         dangerous[cell]=true;spikeOrder.Add(cell);onsets.Add(onset);
     }
 
@@ -640,7 +643,7 @@ public sealed partial class ChamberGame : MonoBehaviour
         {
             float local=age-onsets[k];
             if(local>=-.00001f && local<SpikeSeconds-.00001f)
-                spikeHit=Mathf.Min(spikeHit,tiles[spikeOrder[k]].Contact(from,to,local,slice,globalSpikes));
+                spikeHit=Mathf.Min(spikeHit,tiles[spikeOrder[k]].Contact(from,to,local,slice,globalSpikes,SpikeSeconds));
         }
         bool lift=phase==Phase.LiftTravel;
         float flightAge=lift?liftLength-remaining:age;
@@ -679,8 +682,8 @@ public sealed partial class ChamberGame : MonoBehaviour
                 var tile=tiles[spikeOrder[k]];
                 float local=actualAge-onsets[k];
                 if(local<-.00001f){tile.ShowWarning(Mathf.Clamp01(1+local/PatternSpikeLead));continue;}
-                if(local>=SpikeSeconds-.00001f){if(tile.spikes.gameObject.activeSelf)tile.ResetTile();continue;}
-                if(!tile.spikes.gameObject.activeSelf)
+                if(local>=SpikeSeconds-.00001f){if(tile.Erupted)tile.ResetTile();continue;}
+                if(!tile.Erupted)
                 {
                     tile.Strike(globalSpikes);
                     if(k==0 || onsets[k]!=onsets[k-1])sound.Activate(TrapKind.Spike);
