@@ -14812,6 +14812,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7efd80036234f7a4bb0f40b25bebc502, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ChamberGame
+  gameTitle: Don't Fall
+  titleFont: {fileID: 12800000, guid: 78ffa95c803ab1942a72b55143fd18e9, type: 3}
   explorer: {fileID: 585871359}
   arrowheadMesh: {fileID: 4300000, guid: daa72979c21d40f42b4b599e3d4d4058, type: 2}
   trapMetal: {fileID: 2100000, guid: 14acd1ec78664194b895b4450acfefb1, type: 2}

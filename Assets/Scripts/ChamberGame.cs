@@ -3,6 +3,8 @@ using UnityEngine;
 
 public sealed partial class ChamberGame : MonoBehaviour
 {
+    [SerializeField] string gameTitle = "Don't Fall";
+    public Font titleFont;
     public Transform explorer;
     public Mesh arrowheadMesh;
     public Material trapMetal;
@@ -13,7 +15,7 @@ public sealed partial class ChamberGame : MonoBehaviour
     const float SpikeSeconds = 0.46f;
     const float FinalArenaRampSeconds=60f, FinalArenaMaxTempo=2f, MinimumTrapWarning=.6f;
     const string RecordKey = "StoneChamber.Best";
-    enum Phase { Arrival, SoloReady, Countdown, AwaitStep, FirstStep, Warning, Strike, Rest, Collapse, TideWarning, TideTravel, LavaWarning, LavaTravel, GroundWarning, GroundCracking, GroundGone, Dead, Returning, Results }
+    enum Phase { Arrival, SoloReady, Countdown, AwaitStep, FirstStep, Warning, Strike, Rest, Collapse, TideWarning, TideTravel, LavaWarning, LavaTravel, GroundWarning, GroundCracking, GroundGone, Dead, Returning, Results, Title }
     enum PatternKind { Automatic, Spike, Arrow, ArrowRows, Poison, Wave, Lava, GroundRenewal, Collapse }
     Phase phase;
     ArrowVolley arrow;
@@ -73,6 +75,7 @@ public sealed partial class ChamberGame : MonoBehaviour
     GameObject[] startCues;
     int localDuelSlot;
     ChamberArrival arrival;
+    ChamberTitleScreen titleScreen;
     ChamberAudio sound;
     DeathFocus deathFocus;
     float transitionTime;
@@ -162,6 +165,24 @@ public sealed partial class ChamberGame : MonoBehaviour
         tide=new TidalWave(transform,quad);lava=new LavaBarrage(transform,quad);
         deathFocus.Prepare(chamberCamera,quad);
         lighting=chamberCamera.gameObject.AddComponent<AbyssLighting>();lighting.Prepare(explorer,tiles,quad);
+        if(!chamberCamera.TryGetComponent<AudioListener>(out _))chamberCamera.gameObject.AddComponent<AudioListener>();
+        titleScreen = new ChamberTitleScreen(this, board, gameTitle, titleFont);
+        OpenTitle(false);
+        lan.OpenFromCommandLine();
+    }
+
+    void OpenTitle(bool showMenu)
+    {
+        phase = Phase.Title;
+        first.Feet.gameObject.SetActive(false);
+        lighting.Follow(null);
+        titleScreen.Open(showMenu);
+    }
+
+    void StartSoloFromTitle()
+    {
+        titleScreen.Close();
+        ResetBoard();
         arrival = gameObject.AddComponent<ChamberArrival>();
         arrival.Prepare(this,first.Hop);
         phase = Phase.Arrival;
@@ -525,6 +546,7 @@ public sealed partial class ChamberGame : MonoBehaviour
 
     public void BeginDuel(int seed,int count)
     {
+        titleScreen?.Close();
         var outside=Random.state;Random.InitState(seed);duelRandom=Random.state;Random.state=outside;
         participants=count;priority=(seed&int.MaxValue)%count;
         localDuelSlot=lan.Slot;
@@ -541,7 +563,7 @@ public sealed partial class ChamberGame : MonoBehaviour
     }
     public void EndDuel(){
         System.Array.Clear(bots,0,bots.Length);
-        participants=1;priority=0;ApplyProfiles();ResetBoard();deathFocus.Reveal(1);phase=Phase.SoloReady;sound.ResumeMusic();
+        participants=1;priority=0;ApplyProfiles();ResetBoard();deathFocus.Reveal(1);OpenTitle(true);sound.ResumeMusic();
     }
     public int DuelTick(Vector2Int[] keys,float dt){
         var outside=Random.state;Random.state=duelRandom;
@@ -587,6 +609,7 @@ public sealed partial class ChamberGame : MonoBehaviour
             return;
         }
         lobby?.Hide();
+        if(phase==Phase.Title)return;
         bool freeze = RoundFinished || CountingDown;
         float presentationDelta = Mathf.Min(.06f,Time.unscaledDeltaTime);
         for(int i=0;i<participants;i++){
@@ -601,6 +624,12 @@ public sealed partial class ChamberGame : MonoBehaviour
     }
     void Update()
     {
+        if(phase==Phase.Title){
+            if(lan.Busy)lan.Poll(Time.unscaledDeltaTime,Vector2Int.zero);
+            if(phase==Phase.Title && !lan.InRoom)
+                titleScreen.Advance(Time.unscaledDeltaTime,!lan.Busy && !lan.Editing);
+            return;
+        }
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         UpdateDebugControls();
 #endif
@@ -651,7 +680,6 @@ public sealed partial class ChamberGame : MonoBehaviour
             {
                 phase = Phase.SoloReady;
                 sound.ResumeMusic();
-                lan.OpenFromCommandLine();
             }
             return;
         }
@@ -964,12 +992,27 @@ public sealed partial class ChamberGame : MonoBehaviour
     }
     void OnDisable() => startText?.Hide();
 
-    void OnDestroy() { startText?.Dispose();lan?.Dispose();tide?.Dispose();lava?.Dispose(); if (poisonMaterial) Destroy(poisonMaterial);if(groundCrackMaterial)Destroy(groundCrackMaterial); }
+    void OnDestroy() { titleScreen?.Dispose();startText?.Dispose();lan?.Dispose();tide?.Dispose();lava?.Dispose(); if (poisonMaterial) Destroy(poisonMaterial);if(groundCrackMaterial)Destroy(groundCrackMaterial); }
 
     void OnGUI()
     {
         var matrix=GUI.matrix;
         try{
+            if(phase==Phase.Title){
+                if(lan.Busy || lan.Editing){
+                    float scale=Mathf.Clamp(Screen.height/640f,.65f,1.6f);
+                    GUI.matrix=Matrix4x4.Scale(Vector3.one*scale);
+                    lan.Draw(Screen.width/scale,Screen.height/scale,true);
+                }else{
+                    switch(titleScreen.Draw()){
+                        case ChamberTitleScreen.Choice.Friends: lan.OpenMenu();break;
+                        case ChamberTitleScreen.Choice.Bots: lan.OpenBotRoom();break;
+                        case ChamberTitleScreen.Choice.Profile: lan.OpenProfile();break;
+                        case ChamberTitleScreen.Choice.Solo: StartSoloFromTitle();break;
+                    }
+                }
+                return;
+            }
             DrawGameUI();
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             DrawDebugControls();
@@ -1037,7 +1080,7 @@ public sealed partial class ChamberGame : MonoBehaviour
             return;
         }
         GUI.Box(new Rect(12, 10, w - 24, 46), GUIContent.none);
-        GUI.Label(new Rect(24, 14, w / 2, 38), "침묵의 석실", title);
+        GUI.Label(new Rect(24, 14, w / 2, 38), gameTitle, title);
         GUI.Label(new Rect(w / 2, 14, w / 2 - 24, 38), duel ? $"라운드  {elapsed:0.0}초" : $"생존  {elapsed:0.0}초     최고  {best:0.0}초", score);
         if (poisonCenter>=0)
         {

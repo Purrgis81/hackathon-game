@@ -63,6 +63,7 @@ public static class ChamberScene
         AssetDatabase.CreateAsset(border, Materials + "Trap warning.mat");
         var spikeMesh = SpikeMesh();
         var game = room.gameObject.AddComponent<ChamberGame>();
+        game.titleFont = AssetDatabase.LoadAssetAtPath<Font>("Assets/Art/CountdownText/Font/AllIn1Text_Font_LilitaOne.ttf");
         game.arrowheadMesh = spikeMesh;
         game.trapMetal = steel;
         game.tiles = new SpikeTile[9];

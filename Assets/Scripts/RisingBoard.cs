@@ -122,6 +122,16 @@ public sealed class RisingBoard
         System.Array.Clear(temporaryMissing,0,temporaryMissing.Length);fallingEnd=Count;Width--;fallAge=0;
         DressCoast();
     }
+    public void Splash(Bounds footprint){
+        impactTiles[0]=new Vector4(footprint.center.x,footprint.center.z,footprint.extents.x,footprint.extents.z);
+        SetImpacts(1);
+        sea.SetPropertyBlock(waterProperties);
+    }
+    void SetImpacts(int count){
+        waterProperties.SetVectorArray("_ImpactTiles",impactTiles);
+        waterProperties.SetInteger("_ImpactCount",count);
+        waterProperties.SetFloat("_ImpactStart",Time.timeSinceLevelLoad);
+    }
     public void Animate(float dt){
         if(fallingEnd==0)return;
         fallAge+=dt;
@@ -138,11 +148,7 @@ public sealed class RisingBoard
                     footprint.extents.x,footprint.extents.z);
             if(t>=1)Tiles[i].gameObject.SetActive(false);
         }
-        if(contacts>0){
-            waterProperties.SetVectorArray("_ImpactTiles",impactTiles);
-            waterProperties.SetInteger("_ImpactCount",contacts);
-            waterProperties.SetFloat("_ImpactStart",Time.timeSinceLevelLoad);
-        }
+        if(contacts>0)SetImpacts(contacts);
         if(contacts>0||t>=1){
             SetShoreBounds();
             sea.SetPropertyBlock(waterProperties);

@@ -81,6 +81,9 @@ public sealed partial class ChamberLan : IDisposable
         ResultsReady=false;
         previousBackground=Application.runInBackground;Application.runInBackground=true;mode=Mode.Menu;
     }
+    public void OpenProfile(){
+        draftName=Local.Name;draftColor=Local.Swatch;draftAnimal=Local.Animal;editing=true;
+    }
     public void HostRoom(){
         OpenMenu();
         try{
@@ -393,7 +396,7 @@ public sealed partial class ChamberLan : IDisposable
                 if(GUILayout.Button("취소"))editing=false;
                 GUILayout.EndHorizontal();GUILayout.EndArea();
             }else{
-                if(GUI.Button(new Rect((width-200)/2,height-201,200,34),"캐릭터 설정")){draftName=Local.Name;draftColor=Local.Swatch;draftAnimal=Local.Animal;editing=true;}
+                if(GUI.Button(new Rect((width-200)/2,height-201,200,34),"캐릭터 설정"))OpenProfile();
                 if(GUI.Button(new Rect((width-200)/2,height-160,200,34),"친구와 대전"))OpenMenu();
                 if(GUI.Button(new Rect((width-200)/2,height-119,200,34),"봇과 대전"))OpenBotRoom();
             }

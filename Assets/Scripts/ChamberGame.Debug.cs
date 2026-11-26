@@ -46,6 +46,7 @@ public sealed partial class ChamberGame
     // Cancel all hazards and forced movement before reusing their tile indices.
     // Preserve the automatic-pattern toggle; only the user changes that choice.
     void PrepareDebugArena(int width){
+        if(phase==Phase.Title)titleScreen.Close();
         debugSession=true;
         debugBoardWidth=Mathf.Clamp(width,3,10);
         Vector3 position=first.Feet.position;
