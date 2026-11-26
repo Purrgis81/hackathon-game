@@ -5,7 +5,7 @@ public enum ChamberDebugPattern
 {
     SpikeSpread, SpikeInward, SpikeOutward, SpikeRush, GlobalSpikes, SingleShelter,
     ArrowSingle, ArrowReturn, ArrowParallel, ArrowCross, ArrowBurst, ArrowFourWay, ArrowEightWay, ArrowLineSafe,
-    PoisonCross, PoisonLine, PoisonStar, Wave, Lava, Collapse
+    PoisonCross, PoisonLine, PoisonStar, Wave, Lava, Collapse, GroundRenewal
 }
 
 // These controls only exist in the Editor and development players. Network
@@ -16,7 +16,7 @@ public sealed partial class ChamberGame
         "가시 · 순차 확산", "가시 · 안쪽 나선", "가시 · 바깥 나선", "가시 · 쉬고 쇄도",
         "가시 · 전역", "가시 · 안전 1칸", "화살 · 단발", "화살 · 왕복",
         "화살 · 평행", "화살 · 교차", "화살 · 시차 연사", "화살 · 사방", "화살 · 팔방", "화살 · 한 줄 안전지대",
-        "독 · 십자", "독 · 직선", "독 · 별", "파도", "용암", "발판 붕괴"
+        "독 · 십자", "독 · 직선", "독 · 별", "파도", "용암", "발판 붕괴", "균열 지대"
     };
 
     bool debugOpen,debugSession;
@@ -56,6 +56,7 @@ public sealed partial class ChamberGame
         System.Array.Clear(dangerous,0,dangerous.Length);
         System.Array.Clear(exits,0,exits.Length);
         budget=0;poisonCenter=-1;followPotion=globalSpikes=singleShelter=spiralWave=false;
+        groundTiles.Clear();groundSignature=0;foreach(var crack in groundCracks)crack?.Clear();
         patternName="";result="";deathMessage="";
         if(board.Width!=debugBoardWidth)finalArenaSeconds=0;
         board.Resize(debugBoardWidth);
@@ -89,6 +90,7 @@ public sealed partial class ChamberGame
         else if(selected<=ChamberDebugPattern.PoisonStar){kind=PatternKind.Poison;variant=index-(int)ChamberDebugPattern.PoisonCross;}
         else if(selected==ChamberDebugPattern.Wave)kind=PatternKind.Wave;
         else if(selected==ChamberDebugPattern.Lava)kind=PatternKind.Lava;
+        else if(selected==ChamberDebugPattern.GroundRenewal)kind=PatternKind.GroundRenewal;
         else kind=PatternKind.Collapse;
         Warn(kind,variant);
         debugMessage=DebugPatternLabels[index]+(debugAutomatic?" · 예고부터 실행 중 (이후 자동 진행)":" · 예고부터 실행 중 (이후 대기)");

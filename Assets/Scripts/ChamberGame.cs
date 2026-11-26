@@ -13,8 +13,8 @@ public sealed partial class ChamberGame : MonoBehaviour
     const float SpikeSeconds = 0.46f;
     const float FinalArenaRampSeconds=60f, FinalArenaMaxTempo=2f, MinimumTrapWarning=.6f;
     const string RecordKey = "StoneChamber.Best";
-    enum Phase { Arrival, SoloReady, Countdown, AwaitStep, FirstStep, Warning, Strike, Rest, Collapse, TideWarning, TideTravel, LavaWarning, LavaTravel, Dead, Returning }
-    enum PatternKind { Automatic, Spike, Arrow, ArrowRows, Poison, Wave, Lava, Collapse }
+    enum Phase { Arrival, SoloReady, Countdown, AwaitStep, FirstStep, Warning, Strike, Rest, Collapse, TideWarning, TideTravel, LavaWarning, LavaTravel, GroundWarning, GroundCracking, GroundGone, Dead, Returning }
+    enum PatternKind { Automatic, Spike, Arrow, ArrowRows, Poison, Wave, Lava, GroundRenewal, Collapse }
     Phase phase;
     ArrowVolley arrow;
     TidalWave tide;
@@ -46,6 +46,11 @@ public sealed partial class ChamberGame : MonoBehaviour
     public float LobbySeatX(int slot) => lobby!=null ? lobby.SeatX(slot) : (slot+.5f)/Capacity;
     AbyssLighting lighting;
     readonly bool[] exits=new bool[100];
+    readonly List<int> groundTiles=new List<int>(24);
+    readonly GroundCrackVisual[] groundCracks=new GroundCrackVisual[100];
+    Material groundCrackMaterial;
+    int groundSignature;
+    float groundBreakStarted;
     const float SpikeLead=2f;
     const float FollowBeat=.34f;
     readonly List<float> onsets=new List<float>();
@@ -134,6 +139,9 @@ public sealed partial class ChamberGame : MonoBehaviour
         lan=new ChamberLan(this);ApplyProfiles();
         arrow=new ArrowVolley(gameObject);
         potion=gameObject.AddComponent<PotionVolley>();
+        groundCrackMaterial=new Material(trapMetal){color=Color.black};
+        groundCrackMaterial.EnableKeyword("_EMISSION");
+        groundCrackMaterial.SetColor("_EmissionColor",Color.black);
         poisonMaterial = new Material(Resources.Load<Shader>("PoisonFloor"));
         poison = new PoisonFloor[tiles.Length];
         for (int i=0; i<tiles.Length; i++) poison[i] = new PoisonFloor(tiles[i],poisonMaterial);
@@ -177,6 +185,8 @@ public sealed partial class ChamberGame : MonoBehaviour
         followPotion=false;
         poisonCenter=-1;
         arrow.Clear();
+        groundTiles.Clear();groundSignature=0;
+        foreach(var crack in groundCracks)crack?.Clear();
         tide?.Clear();lava?.Clear();tideCasts=0;
         int[] starts={0,2,6,8};
         for(int i=0;i<Capacity;i++){
@@ -263,6 +273,15 @@ public sealed partial class ChamberGame : MonoBehaviour
             sound.LavaWarning();patternName="용암 분출 · 붉은 표적에서 벗어나세요";
             wave++;phase=Phase.LavaWarning;remaining=warningSeconds=lava.WarningSeconds;return;
         }
+        if(requested==PatternKind.GroundRenewal || (automatic&&wave%7==6)){
+            arrow.Clear();spikeOrder.Clear();onsets.Clear();budget=0;potion.Clear();
+            PlanGroundRenewal();
+            if(groundTiles.Count>0){
+                patternName="균열 지대 · 금 간 발판에서 벗어나세요";
+                wave++;phase=Phase.GroundWarning;remaining=warningSeconds=PatternWarning(2.4f);
+                sound.Latch(0,true);return;
+            }
+        }
         if(useArrow){
             int pattern=requested==PatternKind.ArrowRows?7:requested==PatternKind.Arrow?variant:arrowCasts++%8;
             arrow.Plan(board,origin,horizontal,wave%4<2?1:-1,pattern,exits,Pressure);
@@ -338,6 +357,33 @@ public sealed partial class ChamberGame : MonoBehaviour
             if(cost<best){best=cost;choice=i;}
         }
         return choice;
+    }
+    void PlanGroundRenewal(){
+        groundTiles.Clear();groundSignature=0;
+        var available=new List<int>();
+        for(int i=0;i<board.Count;i++){
+            if(exits[i])continue;
+            bool occupied=false;
+            for(int p=0;p<participants;p++)if(players[p].Alive&&players[p].Occupies(i)){occupied=true;break;}
+            if(!occupied)available.Add(i);
+        }
+        for(int i=available.Count-1;i>0;i--){int j=Random.Range(0,i+1);int value=available[i];available[i]=available[j];available[j]=value;}
+        int count=Mathf.Min(available.Count,Mathf.Clamp(Mathf.RoundToInt(board.Count*.2f),2,18));
+        for(int i=0;i<count;i++){
+            int cell=available[i];groundTiles.Add(cell);groundSignature=groundSignature*31+cell;
+            groundCracks[cell]??=tiles[cell].GetComponent<GroundCrackVisual>()??tiles[cell].gameObject.AddComponent<GroundCrackVisual>();
+            groundCracks[cell].Show(.08f,groundCrackMaterial);
+        }
+    }
+    void ShowGroundCracks(float progress){
+        float shake=Mathf.Lerp(.012f,.085f,progress*progress),tilt=Mathf.Lerp(1.5f,8f,progress);
+        foreach(int cell in groundTiles){
+            float seed=cell*1.71f,beat=elapsed*43+seed;
+            groundCracks[cell].Show(progress,groundCrackMaterial);
+            board.SetTemporaryPose(cell,new Vector3(Mathf.Sin(beat)*shake,0,Mathf.Cos(beat*.87f)*shake),0,
+                new Vector3(Mathf.Sin(beat*.91f)*tilt,0,Mathf.Cos(beat)*tilt));
+            tiles[cell].ShowWarning(progress,-2);
+        }
     }
     void BuildSpiral(bool outward){
         spiralIndex=0;
@@ -474,6 +520,7 @@ public sealed partial class ChamberGame : MonoBehaviour
             }
             unchecked{
                 int h=((int)phase*31+wave)*107+board.Count;
+                h=h*107+groundSignature;
                 for(int i=0;i<participants;i++){var p=players[i];h=h*107+p.Cell;h=h*107+p.Target;h=h*31+wins[i];h=h*2+(p.Alive?1:0);}
                 for(int i=0;i<participants;i++){
                     h=h*2+(players[i].Sliding?1:0);h=h*2+(players[i].Stunned?1:0);h=h*7+players[i].WakeCount;
@@ -578,6 +625,19 @@ public sealed partial class ChamberGame : MonoBehaviour
                     if(onset+SpikeSeconds-strikeAge>.00001f)slice=Mathf.Min(slice,onset+SpikeSeconds-strikeAge);
                 }
             }
+            if(phase==Phase.GroundCracking||phase==Phase.GroundGone){
+                float debrisAge=elapsed-groundBreakStarted;
+                foreach(int cell in groundTiles)groundCracks[cell].AnimateBreak(debrisAge);
+            }
+            if(phase==Phase.GroundCracking){
+                float t=1-remaining/PatternInterval(.52f);
+                foreach(int cell in groundTiles){
+                    float seed=cell*1.71f,fall=10*t*t;
+                    var offset=new Vector3(Mathf.Sin(elapsed*39+seed)*.07f*t,0,Mathf.Cos(elapsed*33+seed)*.07f*t);
+                    var tilt=new Vector3(Mathf.Sin(seed)*17*t,0,Mathf.Cos(seed*.73f)*17*t);
+                    board.SetTemporaryPose(cell,offset,-fall,tilt);
+                }
+            }
             for(int i=0;i<participants;i++)if(players[i].Alive){
                 var p=players[i];
                 destinations[i]=p.NextPosition(slice,p.Duration(stepSeconds),board);
@@ -603,6 +663,7 @@ public sealed partial class ChamberGame : MonoBehaviour
         if (phase == Phase.FirstStep)
             tiles[openingTile].ShowWarning(1-remaining/warningSeconds);
         else if(phase==Phase.Collapse)board.Preview(1-remaining/RisingBoard.CollapseLead);
+        else if(phase==Phase.GroundWarning)ShowGroundCracks(1-remaining/warningSeconds);
         else if (phase == Phase.Warning)
         {
             ShowSpikeSequence(remaining);
@@ -732,6 +793,30 @@ public sealed partial class ChamberGame : MonoBehaviour
 
     void NextPhase()
     {
+        if(phase==Phase.GroundWarning){
+            groundBreakStarted=elapsed;
+            foreach(int cell in groundTiles){
+                var floor=tiles[cell].transform.Find("floor").GetComponent<Renderer>();
+                groundCracks[cell].BeginBreak(floor.sharedMaterial,cell);
+            }
+            phase=Phase.GroundCracking;remaining=PatternInterval(.52f);sound.Latch(0,true);return;
+        }
+        if(phase==Phase.GroundCracking){
+            foreach(int cell in groundTiles)board.SetTemporaryMissing(cell,true);
+            bool lost=false;
+            for(int i=0;i<participants;i++)if(players[i].Alive&&groundTiles.Exists(cell=>players[i].Occupies(cell))){
+                causes[i]=TrapKind.Fall;KnockOut(i,TrapKind.Fall,elapsed);lost=true;
+            }
+            if(lost)FinishIfDecided(elapsed);
+            if(phase==Phase.Dead)return;
+            phase=Phase.GroundGone;remaining=PatternInterval(.88f);sound.Activate(TrapKind.Fall);return;
+        }
+        if(phase==Phase.GroundGone){
+            foreach(int cell in groundTiles){
+                board.SetTemporaryMissing(cell,false);tiles[cell].ResetTile();groundCracks[cell].Clear();
+            }
+            groundTiles.Clear();groundSignature=0;patternName="";phase=Phase.Rest;remaining=PatternInterval(.38f);return;
+        }
         if(phase==Phase.LavaWarning){
             phase=Phase.LavaTravel;remaining=lava.End-elapsed+.4f;return;
         }
@@ -808,7 +893,7 @@ public sealed partial class ChamberGame : MonoBehaviour
         GUI.Box(new Rect(center.x-46,center.y-40-t*10,92,24),$"{runner.Blocker+1}P 블록!");
         GUI.color=color;
     }
-    void OnDestroy() { lan?.Dispose();tide?.Dispose();lava?.Dispose(); if (poisonMaterial) Destroy(poisonMaterial); }
+    void OnDestroy() { lan?.Dispose();tide?.Dispose();lava?.Dispose(); if (poisonMaterial) Destroy(poisonMaterial);if(groundCrackMaterial)Destroy(groundCrackMaterial); }
 
     void OnGUI()
     {
@@ -853,7 +938,7 @@ public sealed partial class ChamberGame : MonoBehaviour
             var point=chamberCamera.WorldToScreenPoint(first.View.position+Vector3.up*1.65f);
             DrawStun(first,point,scale,h,true);
         }
-        if(!string.IsNullOrEmpty(patternName)&&(phase==Phase.Warning||phase==Phase.Strike||phase==Phase.TideWarning||phase==Phase.TideTravel||phase==Phase.LavaWarning||phase==Phase.LavaTravel))
+        if(!string.IsNullOrEmpty(patternName)&&(phase==Phase.Warning||phase==Phase.Strike||phase==Phase.TideWarning||phase==Phase.TideTravel||phase==Phase.LavaWarning||phase==Phase.LavaTravel||phase==Phase.GroundWarning||phase==Phase.GroundCracking||phase==Phase.GroundGone))
             GUI.Box(new Rect((w-276)/2,h-57,276,28),patternName);
         if(lava.Active)GUI.Box(new Rect((w-276)/2,h-91,276,28),"용암 분출 · 붉은 표적 주의");
         if(phase==Phase.Collapse){

@@ -7,6 +7,8 @@ public sealed class RisingBoard
     public const float CollapseLead=2.6f;
     readonly Dictionary<Vector2Int,int> indices=new Dictionary<Vector2Int,int>();
     readonly Vector2Int[] cells=new Vector2Int[100];
+    readonly bool[] temporaryMissing=new bool[100];
+    readonly Quaternion[] homeRotations=new Quaternion[100];
     readonly Camera camera;
     readonly Renderer sea;
     readonly Renderer[] floors = new Renderer[100];
@@ -37,12 +39,24 @@ public sealed class RisingBoard
                 cells[index]=cell;indices.Add(cell,index);
                 tile.transform.localPosition=new Vector3(x*Spacing,0,z*Spacing);
                 floors[index]=tile.transform.Find("floor").GetComponent<Renderer>();
-                Tiles[index++]=tile;
+                Tiles[index]=tile;homeRotations[index]=tile.transform.localRotation;index++;
             }
         }
     }
     public Vector2Int Cell(int index)=>cells[index];
-    public int Neighbor(int index,Vector2Int dir)=>indices.TryGetValue(cells[index]+dir,out int n)&&n<Count ? n : -1;
+    public bool IsPresent(int index)=>index>=0&&index<Count&&!temporaryMissing[index];
+    public int Neighbor(int index,Vector2Int dir)=>IsPresent(index)&&indices.TryGetValue(cells[index]+dir,out int n)&&n<Count&&IsPresent(n) ? n : -1;
+    public void SetTemporaryMissing(int index,bool missing){
+        if(index<0||index>=Tiles.Length)return;
+        temporaryMissing[index]=missing;
+        if(missing){Tiles[index].ResetTile();Tiles[index].gameObject.SetActive(false);}
+        else{SetTemporaryPose(index,Vector3.zero,0,Vector3.zero);Tiles[index].gameObject.SetActive(index<Count);}
+    }
+    public void SetTemporaryPose(int index,Vector3 offset,float height,Vector3 euler){
+        if(index<0||index>=Count||temporaryMissing[index])return;
+        var cell=cells[index];Tiles[index].transform.localPosition=new Vector3(cell.x*Spacing+offset.x,height+offset.y,cell.y*Spacing+offset.z);
+        Tiles[index].transform.localRotation=homeRotations[index]*Quaternion.Euler(euler);
+    }
     public int Nearest(Vector3 position){
         int result=0;float distance=float.PositiveInfinity;
         for(int i=0;i<Count;i++){
@@ -56,10 +70,11 @@ public sealed class RisingBoard
     public void Resize(int width){
         waterProperties.Clear();
         sea.SetPropertyBlock(null);
-        Width=Mathf.Clamp(width,3,10);fallingEnd=0;fallAge=0;camera.transform.position=CameraPosition();
+        System.Array.Clear(temporaryMissing,0,temporaryMissing.Length);Width=Mathf.Clamp(width,3,10);fallingEnd=0;fallAge=0;camera.transform.position=CameraPosition();
         for(int i=0;i<Tiles.Length;i++){
             Tiles[i].gameObject.SetActive(i<Count);
             SetHeight(i,0);
+            Tiles[i].transform.localRotation=homeRotations[i];
         }
         DressCoast();
     }
@@ -96,7 +111,7 @@ public sealed class RisingBoard
         for(int i=NextCount;i<Count;i++)Tiles[i].ShowWarning(progress,-2);
     }
     public void Collapse(){
-        fallingEnd=Count;Width--;fallAge=0;
+        System.Array.Clear(temporaryMissing,0,temporaryMissing.Length);fallingEnd=Count;Width--;fallAge=0;
         DressCoast();
     }
     public void Animate(float dt){
