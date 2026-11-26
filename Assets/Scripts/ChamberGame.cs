@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public sealed class ChamberGame : MonoBehaviour
+public sealed partial class ChamberGame : MonoBehaviour
 {
     public Transform explorer;
     public SpikeTile[] tiles;
@@ -11,6 +11,7 @@ public sealed class ChamberGame : MonoBehaviour
     const float SpikeSeconds = 0.46f;
     const string RecordKey = "StoneChamber.Best";
     enum Phase { Arrival, AwaitStep, FirstStep, Warning, Strike, Rest, Collapse, LiftWarning, LiftTravel, TideWarning, TideTravel, LavaWarning, LavaTravel, Dead, Returning }
+    enum PatternKind { Automatic, Spike, Arrow, Poison, Wave, Lava, Lift, Collapse }
     Phase phase;
     ArrowVolley arrow;
     TidalWave tide;
@@ -61,7 +62,14 @@ public sealed class ChamberGame : MonoBehaviour
     float nextBurstAt;
     int lateCasts;
     bool globalSpikes;
-    float Pressure => Mathf.Clamp01(elapsed/120f);
+    float Pressure {
+        get {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if(debugSession && !lan.Busy && debugPressure>=0)return debugPressure;
+#endif
+            return Mathf.Clamp01(elapsed/120f);
+        }
+    }
     static readonly Vector2Int[] Directions={Vector2Int.right,Vector2Int.up,Vector2Int.left,Vector2Int.down};
     readonly List<int> spikeOrder=new List<int>(49);
     PotionVolley potion;
@@ -130,6 +138,9 @@ public sealed class ChamberGame : MonoBehaviour
         foreach (var tile in tiles) tile.ResetTile();
         foreach (var patch in poison) patch.Clear();
         board.Reset();
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        if(debugSession && !lan.Busy)board.Resize(debugBoardWidth);
+#endif
         potion.Clear();
         spikeOrder.Clear();
         casts=0;
@@ -169,21 +180,29 @@ public sealed class ChamberGame : MonoBehaviour
         if (transitionTime >= DeathFocus.Reopen) phase = Phase.AwaitStep;
     }
 
-    void Warn()
+    void Warn(PatternKind requested=PatternKind.Automatic,int variant=0)
     {
-        if(board.Width>3 && elapsed>=nextCollapse&&!lava.Active&&!HasControlledPlayers){
+        bool automatic=requested==PatternKind.Automatic;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        if(automatic && DebugHoldPatterns){phase=Phase.Rest;remaining=.1f;return;}
+#endif
+        if(board.Width>3 && (requested==PatternKind.Collapse ||
+            (automatic && elapsed>=nextCollapse&&!lava.Active&&!HasControlledPlayers))){
             remaining=RisingBoard.CollapseLead;phase=Phase.Collapse;board.Preview(0);
             sound.Latch(0,true);return;
         }
-        if(elapsed>=nextLift&&!lava.Active&&!HasControlledPlayers){StartLift();return;}
+        if(requested==PatternKind.Lift || (automatic && elapsed>=nextLift&&!lava.Active&&!HasControlledPlayers)){
+            StartLift(requested==PatternKind.Lift?variant:-1);return;
+        }
         singleShelter=spiralWave=false;spiral.Clear();patternName="";
         System.Array.Clear(dangerous,0,dangerous.Length);
         System.Array.Clear(exits,0,exits.Length);
-        bool potionLesson=wave==3||wave==6;
-        bool potionWave=wave>=3&&wave%3==0;
-        globalSpikes=elapsed>=nextBurstAt&&!potionWave&&!followPotion&&!HasControlledPlayers;
-        bool useArrow=wave>0&&wave%4!=2&&!potionLesson&&!globalSpikes;
-        bool useSpike=wave!=1&&!potionLesson;
+        bool potionLesson=automatic && (wave==3||wave==6);
+        bool potionWave=requested==PatternKind.Poison || (automatic && wave>=3&&wave%3==0);
+        globalSpikes=(requested==PatternKind.Spike && variant>=4) ||
+            (automatic && elapsed>=nextBurstAt&&!potionWave&&!followPotion&&!HasControlledPlayers);
+        bool useArrow=requested==PatternKind.Arrow || (automatic && wave>0&&wave%4!=2&&!potionLesson&&!globalSpikes);
+        bool useSpike=requested==PatternKind.Spike || (automatic && wave!=1&&!potionLesson);
         int leader=wave%participants;
         while(!players[leader].Alive)leader=(leader+1)%participants;
         int origin=players[leader].Target;
@@ -202,14 +221,14 @@ public sealed class ChamberGame : MonoBehaviour
             }
             if(choice>=0)exits[choice]=true;
         }
-        if(wave%7==2){
+        if(requested==PatternKind.Wave || (automatic && wave%7==2)){
             arrow.Clear();spikeOrder.Clear();onsets.Clear();budget=0;potion.Clear();
             tide.Plan(board,origin,Pressure,tideCasts++);
             patternName=$"밀려오는 파도 · {tide.Columns}칸 · 옆으로 피하세요";
             phase=Phase.TideWarning;remaining=warningSeconds=TidalWave.WarningSeconds;
             wave++;sound.WaveWarning();return;
         }
-        if(wave%7==4&&!lava.Active){
+        if(requested==PatternKind.Lava || (automatic && wave%7==4&&!lava.Active)){
             arrow.Clear();spikeOrder.Clear();onsets.Clear();budget=0;potion.Clear();
             foreach(var tile in tiles)tile.ResetTile();
             lava.Plan(board,exits,elapsed,Pressure);
@@ -217,14 +236,14 @@ public sealed class ChamberGame : MonoBehaviour
             wave++;phase=Phase.LavaWarning;remaining=warningSeconds=LavaBarrage.Lead;return;
         }
         if(useArrow){
-            int pattern=arrowCasts++%7;
+            int pattern=requested==PatternKind.Arrow?variant:arrowCasts++%7;
             arrow.Plan(board,origin,horizontal,wave%4<2?1:-1,pattern,exits,Pressure);
             patternName=new[]{"화살 · 단발","화살 · 왕복","화살 · 평행 사격","화살 · 교차 사격","화살 · 시차 연사","화살 · 사방 순환","화살 · 팔방 회전"}[pattern];
             if(pattern>=5){useSpike=false;potionWave=false;}
         }
         spikeOrder.Clear();onsets.Clear();budget=0;
         if(globalSpikes){
-            singleShelter=board.Width==3&&finalBursts++%2==0;
+            singleShelter=requested==PatternKind.Spike?variant==5:board.Width==3&&finalBursts++%2==0;
             int refuge=singleShelter?PickShelter():-1;
             patternName=singleShelter?"최후의 피난처 · 안전 칸 하나":"전역 가시";
             for(int i=0;i<board.Count;i++){
@@ -237,7 +256,7 @@ public sealed class ChamberGame : MonoBehaviour
             budget=Mathf.Clamp(Mathf.RoundToInt(board.Count*Mathf.Lerp(.20f,.72f,Pressure)),3,28);
             batch=Mathf.Max(1,Mathf.CeilToInt((budget-1)/4f));
             heading=Random.Range(0,4);nextReveal=0;
-            int style=spikeCasts++%4;
+            int style=requested==PatternKind.Spike?variant:spikeCasts++%4;
             spiralWave=style==1||style==2;spiralPause=style!=0;
             if(spiralWave){
                 BuildSpiral(style==2);
@@ -252,7 +271,7 @@ public sealed class ChamberGame : MonoBehaviour
         if(potionWave)
         {
             bool late=elapsed>=60;
-            var shape=late && lateCasts%3==0 ? SpillShape.Star :
+            var shape=requested==PatternKind.Poison ? (SpillShape)variant : late && lateCasts%3==0 ? SpillShape.Star :
                 (casts%2==0 ? SpillShape.Cross : SpillShape.Line);
             int center=PotionPattern.Mark(board,poison,origin,escape,shape,exits);
             if(center>=0)
@@ -304,10 +323,10 @@ public sealed class ChamberGame : MonoBehaviour
         }
         spiral.RemoveAll(i=>exits[i]);if(outward)spiral.Reverse();
     }
-    void StartLift(){
+    void StartLift(int variant=-1){
         int lead=wave%participants;while(!players[lead].Alive)lead=(lead+1)%participants;
         int origin=players[lead].Target;
-        board.PlanLift(origin,liftCasts++);arrow.PlanLift(board,Pressure);
+        board.PlanLift(origin,variant>=0?variant:liftCasts++);arrow.PlanLift(board,Pressure);
         spikeOrder.Clear();onsets.Clear();budget=0;potion.Clear();
         patternName="승강 시험 · 내려갈 곳과 복귀할 곳을 고르세요";
         remaining=warningSeconds=2.8f;phase=Phase.LiftWarning;sound.Latch(0);
@@ -389,6 +408,9 @@ public sealed class ChamberGame : MonoBehaviour
         if(!actor.TryStep(direction,board))return;
         sound.PushOff();
         if(phase!=Phase.AwaitStep)return;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        if(DebugHoldPatterns){phase=Phase.Rest;remaining=.1f;return;}
+#endif
         openingTile=actor.Cell;
         System.Array.Clear(dangerous,0,dangerous.Length);
         spikeOrder.Clear();onsets.Clear();AddSpike(openingTile,0);budget=0;
@@ -457,6 +479,9 @@ public sealed class ChamberGame : MonoBehaviour
     }
     void Update()
     {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        UpdateDebugControls();
+#endif
         chamberCamera.fieldOfView=Mathf.Max(38f,Camera.HorizontalToVerticalFieldOfView(42f,chamberCamera.aspect));
         if(lan.Editing)return;
         if(lan.Busy){lan.Poll(Time.unscaledDeltaTime,ReadDirection());return;}
@@ -655,6 +680,9 @@ public sealed class ChamberGame : MonoBehaviour
         if(duel){result=alive==1?$"{winner+1}P 승리":"동시 탈락 · 무승부";if(winner>=0)wins[winner]++;}
         deathFocus.Show(causes[last],players[last].Feet.position);
         foreach(var tile in tiles)tile.dust.Pause();
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        if(debugSession)return;
+#endif
         if(!duel&&elapsed>best){best=elapsed;PlayerPrefs.SetFloat(RecordKey,best);PlayerPrefs.Save();}
     }
 
@@ -745,6 +773,17 @@ public sealed class ChamberGame : MonoBehaviour
     void OnDestroy() { lan?.Dispose();tide?.Dispose();lava?.Dispose(); if (poisonMaterial) Destroy(poisonMaterial); }
 
     void OnGUI()
+    {
+        var matrix=GUI.matrix;
+        try{
+            DrawGameUI();
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            DrawDebugControls();
+#endif
+        }finally{GUI.matrix=matrix;}
+    }
+
+    void DrawGameUI()
     {
         if (phase == Phase.Arrival || phase == Phase.Returning) return;
         title ??= new GUIStyle(GUI.skin.label) { fontSize = 24, fontStyle = FontStyle.Bold };
