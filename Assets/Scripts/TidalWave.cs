@@ -73,13 +73,16 @@ public sealed class TidalWave : IDisposable
         Draw(0);
     }
     public void Fire(float now){startsAt=now;path.enabled=false;}
-    public float Contact(Vector3 from,Vector3 to,float now,float slice){
-        if(!armed||now+slice<startsAt||now>=startsAt+TravelSeconds)return float.PositiveInfinity;
-        float a=slice>0?Mathf.Clamp01((startsAt-now)/slice):0;
-        float b=slice>0?Mathf.Clamp01((startsAt+TravelSeconds-now)/slice):1;
+    public float Contact(Vector3 from,Vector3 to,float now,float slice)=>ContactAt(from,to,now,slice,startsAt);
+    public float ForecastContact(Vector3 from,Vector3 to,float now,float slice,float announcedStart)
+        =>ContactAt(from,to,now,slice,float.IsPositiveInfinity(startsAt)?announcedStart:startsAt);
+    float ContactAt(Vector3 from,Vector3 to,float now,float slice,float launch){
+        if(!armed||now+slice<launch||now>=launch+TravelSeconds)return float.PositiveInfinity;
+        float a=slice>0?Mathf.Clamp01((launch-now)/slice):0;
+        float b=slice>0?Mathf.Clamp01((launch+TravelSeconds-now)/slice):1;
         var inverse=Quaternion.Inverse(crest.rotation);
-        var p=inverse*(Vector3.Lerp(from,to,a)-Position(now+a*slice-startsAt));
-        var q=inverse*(Vector3.Lerp(from,to,b)-Position(now+b*slice-startsAt));
+        var p=inverse*(Vector3.Lerp(from,to,a)-Position(now+a*slice-launch));
+        var q=inverse*(Vector3.Lerp(from,to,b)-Position(now+b*slice-launch));
         float hit=TrapContact.Entry(p,q,span*.5f,.72f);
         return hit<=1?a+(b-a)*hit:float.PositiveInfinity;
     }

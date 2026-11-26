@@ -47,10 +47,18 @@ public sealed class PoisonFloor
         surface.enabled = false;
     }
 
-    public float Contact(Vector3 from, Vector3 to, float now, float slice)
+    public float Contact(Vector3 from,Vector3 to,float now,float slice)=>ContactDuring(from,to,now,slice,StartsAt,EndsAt);
+    public float ForecastContact(Vector3 from,Vector3 to,float now,float slice,float announcedStart){
+        float hit=Contact(from,to,now,slice);
+        if(!Pending||float.IsPositiveInfinity(announcedStart))return hit;
+        float start=announcedStart+delay;
+        float duration=delay<=0?CenterLifetime:delay<=.15f?FirstArmLifetime:TipLifetime;
+        return Mathf.Min(hit,ContactDuring(from,to,now,slice,start,start+duration));
+    }
+    float ContactDuring(Vector3 from,Vector3 to,float now,float slice,float starts,float ends)
     {
-        if (now>=EndsAt || now+slice<StartsAt) return float.PositiveInfinity;
-        float begin=slice>0 ? Mathf.Clamp01((StartsAt-now)/slice) : 0;
+        if (now>=ends || now+slice<starts) return float.PositiveInfinity;
+        float begin=slice>0 ? Mathf.Clamp01((starts-now)/slice) : 0;
         var start=Vector3.Lerp(from,to,begin)-center;
         var p=new Vector2(start.x,start.z);
         var v=new Vector2(to.x-center.x-p.x,to.z-center.z-p.y);
@@ -64,7 +72,7 @@ public sealed class PoisonFloor
             if(entry>1)return float.PositiveInfinity;
         }
         float hit=begin+(1-begin)*entry;
-        return now+slice*hit<EndsAt ? hit : float.PositiveInfinity;
+        return now+slice*hit<ends ? hit : float.PositiveInfinity;
     }
 
     public void Draw(float now)

@@ -7,14 +7,14 @@ using Unity.Networking.Transport;
 using Unity.Networking.Transport.Relay;
 using UnityEngine;
 
-public sealed class ChamberLan : IDisposable
+public sealed partial class ChamberLan : IDisposable
 {
     public const int Port=47737,Capacity=4,TickRate=120;
     const float Step=1f/TickRate;
     const int HistorySize=4096,Window=72;
     enum Mode { Offline,Menu,Allocating,Connecting,Room,Play }
-    const byte ProtocolVersion=13;
-    enum Kind : byte { Hello=1,Lobby,Start,Profile,Input,Frames,Ping,Pong,Leave,SetReady }
+    const byte ProtocolVersion=14;
+    enum Kind : byte { Hello=1,Lobby,Start,Profile,Input,Frames,Ping,Pong,Leave,SetReady,Bots }
     sealed class Peer
     {
         public ChamberConnection Connection;
@@ -162,8 +162,10 @@ public sealed class ChamberLan : IDisposable
             roster[p.Slot]=p.Profile;
             if(p.MatchReady)readySeats |= 1<<p.Slot;
         }
+        AppendBotSeats();
         foreach(var p in peers)if(p.HasProfile){
             p.Control.Enqueue(Packet(Kind.Lobby,a:p.Slot,b:count,c:readySeats));
+            p.Control.Enqueue(Packet(Kind.Bots,a:botMask,b:botCodes));
             if(rosterChanged)for(int i=0;i<count;i++)p.Control.Enqueue(Identity(Kind.Profile,i,roster[i]));
         }
     }
@@ -187,6 +189,7 @@ public sealed class ChamberLan : IDisposable
     }
     public void Poll(float dt,Vector2Int input){
         try{
+            if(practice){if(Playing){QueueHostInput(input);AdvanceHost(dt);}return;}
             if(mode==Mode.Allocating){
                 if(Time.realtimeSinceStartup-connectingAt>25)Fail("온라인 방 연결 시간이 초과되었습니다.");return;
             }
@@ -231,7 +234,8 @@ public sealed class ChamberLan : IDisposable
         while(accumulator>=Step){
             accumulator-=Step;int packed=0;
             for(int i=0;i<count;i++){
-                byte k=inputs[i].Count>0?inputs[i].Dequeue():(byte)0;packed|=k<<(i*3);keys[i]=Decode(k);
+                byte k=IsBot(i)?Encode(game.BotInput(i,Step)):inputs[i].Count>0?inputs[i].Dequeue():(byte)0;
+                packed|=k<<(i*3);keys[i]=Decode(k);
             }
             int hash=game.DuelTick(keys,Step);sequence++;
             history[sequence%HistorySize]=new Frame{Number=sequence,Keys=packed,Hash=hash};
@@ -295,6 +299,7 @@ public sealed class ChamberLan : IDisposable
                 Slot=a;count=b;readySeats=c;mode=Mode.Room;continue;
             }
             if(!host&&mode==Mode.Room&&kind==Kind.Profile&&a>=0&&a<count){roster[a]=ReadIdentity(bytes);continue;}
+            if(!host&&InRoom&&kind==Kind.Bots&&(a&1)==0&&(a>>count)==0){botMask=a;botCodes=b;continue;}
             if(!host&&mode==Mode.Room&&kind==Kind.Start&&b==count){Begin(a);continue;}
             if(host&&Playing&&kind==Kind.Input){
                 if(a<0||a>sequence||b<0||b>8||bytes.Length!=16+b*8)continue;
@@ -333,6 +338,7 @@ public sealed class ChamberLan : IDisposable
         }
     }
     void Close(){
+        ClearBots();
         epoch++;wire?.Dispose();wire=null;peers.Clear();commands.Clear();pending.Clear();
         foreach(var q in inputs)q.Clear();count=1;Slot=0;host=false;PingMs=0;readySeats=0;requestedReady=false;
     }
@@ -366,8 +372,9 @@ public sealed class ChamberLan : IDisposable
                 if(GUILayout.Button("취소"))editing=false;
                 GUILayout.EndHorizontal();GUILayout.EndArea();
             }else{
-                if(GUI.Button(new Rect((width-200)/2,height-160,200,34),"캐릭터 설정")){draftName=Local.Name;draftColor=Local.Swatch;draftAnimal=Local.Animal;editing=true;}
-                if(GUI.Button(new Rect((width-200)/2,height-119,200,34),"친구와 대전"))OpenMenu();
+                if(GUI.Button(new Rect((width-200)/2,height-201,200,34),"캐릭터 설정")){draftName=Local.Name;draftColor=Local.Swatch;draftAnimal=Local.Animal;editing=true;}
+                if(GUI.Button(new Rect((width-200)/2,height-160,200,34),"친구와 대전"))OpenMenu();
+                if(GUI.Button(new Rect((width-200)/2,height-119,200,34),"봇과 대전"))OpenBotRoom();
             }
             return;
         }
@@ -409,9 +416,9 @@ public sealed class ChamberLan : IDisposable
         roomTitle ??= new GUIStyle(GUI.skin.label){fontSize=26,fontStyle=FontStyle.Bold,alignment=TextAnchor.MiddleCenter};
         seatName ??= new GUIStyle(GUI.skin.label){fontSize=16,fontStyle=FontStyle.Bold,alignment=TextAnchor.MiddleCenter,clipping=TextClipping.Clip,wordWrap=false};
         seatRole ??= new GUIStyle(GUI.skin.label){alignment=TextAnchor.MiddleCenter};
-        GUI.Label(new Rect(0,height*.09f,width,42),"탐험대 대기실",roomTitle);
+        GUI.Label(new Rect(0,height*.09f,width,42),practice?"봇 연습 대기실":"탐험대 대기실",roomTitle);
         GUI.Label(new Rect(0,height*.09f+43,width,24),$"참가자   {count} / {Capacity}",seatRole);
-        if(host){
+        if(host&&!practice){
             float box=Mathf.Min(width-24,420),x=(width-box)/2,y=height*.09f+73;
             GUI.Label(new Rect(x,y,80,26),online?"초대 코드":"직접 연결 IP",seatRole);
             GUI.TextField(new Rect(x+82,y,box-144,26),invite);
@@ -420,17 +427,18 @@ public sealed class ChamberLan : IDisposable
         float span=Mathf.Abs(game.LobbySeatX(1)-game.LobbySeatX(0))*width*.98f;
         for(int i=0;i<Capacity;i++){
             float x=game.LobbySeatX(i)*width;
-            float y=height*.66f;
+            float y=Mathf.Min(height*.66f,height-218);
             GUI.Label(new Rect(x-span/2,y,span,22),i<count?$"{i+1}P{(i==0?" · 방장":"")}{(i==Slot?" · 나":"")}":$"{i+1}P",seatRole);
             var name=i<count?roster[i].Label(i):"빈자리";
             GUI.Label(new Rect(x-span/2,y+22,span,26),name,seatName);
-            if(i>0&&i<count)GUI.Label(new Rect(x-span/2,y-23,span,22),IsSeatReady(i)?"준비 완료":"준비 전",seatRole);
+            if(i>0&&i<count)GUI.Label(new Rect(x-span/2,y-23,span,22),IsBot(i)?"봇 · 준비 완료":IsSeatReady(i)?"준비 완료":"준비 전",seatRole);
+            DrawBotSeat(i,x,y+52,span);
         }
         float footer=height-60;
         if(host){
             bool previous=GUI.enabled;
             GUI.enabled=previous&&CanStart;
-            if(GUI.Button(new Rect(width/2-140,footer,174,36),count<2?"친구를 기다리는 중":CanStart?"게임 시작":"준비를 기다리는 중"))StartMatch();
+            if(GUI.Button(new Rect(width/2-140,footer,174,36),count<2?(practice?"봇을 추가하세요":"친구를 기다리는 중"):CanStart?"게임 시작":"준비를 기다리는 중"))StartMatch();
             GUI.enabled=previous;
         }else if(GUI.Button(new Rect(width/2-140,footer,174,36),requestedReady?"준비 취소":"준비"))SetReady(!requestedReady);
         if(GUI.Button(new Rect(width/2+42,footer,98,36),"방 나가기"))Leave();

@@ -92,9 +92,10 @@ public sealed class ArrowVolley
             lanes[i].Sample(local/lanes[i].FlightTime);
         }
     }
-    public float Contact(Vector3 from,Vector3 to,float age,float slice){
+    public float Contact(Vector3 from,Vector3 to,float age,float slice,float observedAge=float.PositiveInfinity){
         float hit=float.PositiveInfinity;
         for(int i=0;i<count;i++){
+            if(delay[i]>.85f && observedAge<delay[i]-.85f)continue;
             float local=age-delay[i],flight=lanes[i].FlightTime;
             if(local+slice<0||local>=flight)continue;
             float a=slice>0?Mathf.Clamp01(-local/slice):0,b=slice>0?Mathf.Clamp01((flight-local)/slice):1;

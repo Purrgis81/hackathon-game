@@ -51,6 +51,7 @@ public sealed partial class ChamberGame : MonoBehaviour
     Material groundCrackMaterial;
     int groundSignature;
     float groundBreakStarted;
+    const float GroundBreakSeconds=.52f,GroundMissingSeconds=.88f;
     const float SpikeLead=2f;
     const float FollowBeat=.34f;
     readonly List<float> onsets=new List<float>();
@@ -199,6 +200,7 @@ public sealed partial class ChamberGame : MonoBehaviour
         elapsed = 0;
         finalArenaSeconds=0;patternTempo=1;patternWarningOverride=-1;
         wave = 0;
+        ResetBotRound();
     }
 
     void OpenForRetry(float dt)
@@ -505,9 +507,11 @@ public sealed partial class ChamberGame : MonoBehaviour
     {
         var outside=Random.state;Random.InitState(seed);duelRandom=Random.state;Random.state=outside;
         participants=count;priority=(seed&int.MaxValue)%count;
+        PrepareBots(seed);
         System.Array.Clear(wins,0,wins.Length);ApplyProfiles();ResetBoard();BeginCountdown();sound.ResumeMusic();
     }
     public void EndDuel(){
+        System.Array.Clear(bots,0,bots.Length);
         participants=1;priority=0;ApplyProfiles();ResetBoard();deathFocus.Reveal(1);phase=Phase.SoloReady;sound.ResumeMusic();
     }
     public int DuelTick(Vector2Int[] keys,float dt){
@@ -630,7 +634,7 @@ public sealed partial class ChamberGame : MonoBehaviour
                 foreach(int cell in groundTiles)groundCracks[cell].AnimateBreak(debrisAge);
             }
             if(phase==Phase.GroundCracking){
-                float t=1-remaining/PatternInterval(.52f);
+                float t=1-remaining/PatternInterval(GroundBreakSeconds);
                 foreach(int cell in groundTiles){
                     float seed=cell*1.71f,fall=10*t*t;
                     var offset=new Vector3(Mathf.Sin(elapsed*39+seed)*.07f*t,0,Mathf.Cos(elapsed*33+seed)*.07f*t);
@@ -799,7 +803,7 @@ public sealed partial class ChamberGame : MonoBehaviour
                 var floor=tiles[cell].transform.Find("floor").GetComponent<Renderer>();
                 groundCracks[cell].BeginBreak(floor.sharedMaterial,cell);
             }
-            phase=Phase.GroundCracking;remaining=PatternInterval(.52f);sound.Latch(0,true);return;
+            phase=Phase.GroundCracking;remaining=PatternInterval(GroundBreakSeconds);sound.Latch(0,true);return;
         }
         if(phase==Phase.GroundCracking){
             foreach(int cell in groundTiles)board.SetTemporaryMissing(cell,true);
@@ -809,7 +813,7 @@ public sealed partial class ChamberGame : MonoBehaviour
             }
             if(lost)FinishIfDecided(elapsed);
             if(phase==Phase.Dead)return;
-            phase=Phase.GroundGone;remaining=PatternInterval(.88f);sound.Activate(TrapKind.Fall);return;
+            phase=Phase.GroundGone;remaining=PatternInterval(GroundMissingSeconds);sound.Activate(TrapKind.Fall);return;
         }
         if(phase==Phase.GroundGone){
             foreach(int cell in groundTiles){
