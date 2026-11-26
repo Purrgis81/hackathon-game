@@ -33,6 +33,11 @@ public sealed class ChamberRunner
     }
     public void Present(RisingBoard board,float duration,float dt,bool freeze){
         if(freeze||!Alive){ClearPrediction();displayed=Feet.position;View.localPosition=Vector3.zero;Hop.Present(dt,true);return;}
+        if(Sliding||Stunned){
+            // Forced motion follows the same simulation clock as the visible wave.
+            // Ordinary movement prediction/look-ahead would outrun the crest.
+            ClearPrediction();displayed=Feet.position;View.localPosition=Vector3.zero;Hop.Present(dt,false);return;
+        }
         predictionAge+=dt;
         if(visualTarget>=0){
             if(Sliding||Stunned||visualFrom>=board.Count||visualTarget>=board.Count||predictionAge>.9f){
@@ -74,7 +79,8 @@ public sealed class ChamberRunner
     public bool Moving => Cell!=Target;
     float progress;
     Vector3 stepFrom;
-    public const float SlideSeconds=.072f;
+    float slideSeconds;
+    public float SlideSpeed {get;private set;}
     public const int WakePresses=6;
     public bool Sliding {get;private set;}
     public bool Stunned {get;private set;}
@@ -82,17 +88,19 @@ public sealed class ChamberRunner
     public int LastWave=-1;
     public Vector2Int SlideDirection;
     float stunAge,protection;
-    public bool Protected=>Sliding||Stunned||protection>0;
-    public float Duration(float ordinary)=>Sliding?SlideSeconds:ordinary;
-    public void WavePush(Vector2Int direction,int stamp,RisingBoard board){
+    public bool Protected=>protection>0;
+    public float Duration(float ordinary)=>Sliding?slideSeconds:ordinary;
+    public void WavePush(Vector2Int direction,int stamp,float waveSpeed,RisingBoard board){
         if(!Alive||LastWave==stamp)return;
-        LastWave=stamp;Sliding=true;Stunned=false;WakeCount=0;stunAge=0;Buffered=Vector2Int.zero;
+        LastWave=stamp;Sliding=true;Stunned=false;WakeCount=0;stunAge=protection=0;Buffered=Vector2Int.zero;
+        SlideSpeed=Mathf.Max(.01f,waveSpeed);slideSeconds=RisingBoard.Spacing/SlideSpeed;
         SlideDirection=direction;ClearPrediction();
+        displayed=Feet.position;View.localPosition=Vector3.zero;
         Feet.rotation=Quaternion.LookRotation(new Vector3(direction.x,0,direction.y));
         Cell=Target=board.Nearest(Feet.position);progress=0;
     }
     public void StartStun(){
-        Sliding=false;Stunned=true;stunAge=0;WakeCount=0;Buffered=Vector2Int.zero;Hop.ArrivalPose(.16f,15);
+        Sliding=false;Stunned=true;stunAge=protection=0;WakeCount=0;Buffered=Vector2Int.zero;Hop.ArrivalPose(.16f,15);
     }
     public bool Mash(){
         if(!Stunned)return false;
@@ -124,6 +132,7 @@ public sealed class ChamberRunner
     {
         Alive=true;BlockAt=-10;Cell=Target=cell;
         Sliding=Stunned=false;LastWave=-1;protection=stunAge=0;WakeCount=0;
+        SlideSpeed=slideSeconds=0;
         Feet.position=board.Tiles[cell].transform.position;
         stepFrom=Feet.position;
         Buffered=Vector2Int.zero;
@@ -142,6 +151,9 @@ public sealed class ChamberRunner
         if(next<0)return false;
         Target=next;
         stepFrom=Feet.position;
+        // A wave can catch a hop partway between tiles. Use its actual remaining
+        // distance so that the first slide does not get an extra speed boost.
+        if(Sliding)slideSeconds=Mathf.Max(.0001f,Vector3.Distance(stepFrom,board.Tiles[next].transform.position)/SlideSpeed);
         progress=0;
         Hop.PushOff(direction);
         return true;

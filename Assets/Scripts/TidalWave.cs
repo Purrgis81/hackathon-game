@@ -19,6 +19,7 @@ public sealed class TidalWave : IDisposable
     public int Sign {get;private set;}
     public int Signature {get;private set;}
     public Vector2Int PushDirection=>Horizontal?new Vector2Int(Sign,0):new Vector2Int(0,Sign);
+    public float Speed=>speed;
     public float TravelSeconds=>distance/speed;
     public Vector3 Position(float age)=>start+forward*(speed*Mathf.Clamp(age,0,TravelSeconds));
     public TidalWave(Transform parent,Mesh quad){

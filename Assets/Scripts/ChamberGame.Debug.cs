@@ -25,6 +25,8 @@ public sealed partial class ChamberGame
     bool debugAutomatic=true;
     int debugBoardWidth=10;
     float debugPressure=-1;
+    float debugWarningSeconds=-1;
+    float debugTempo=-1;
     Vector2 debugScroll;
     string debugMessage="맵 또는 패턴을 클릭하면 단독 테스트를 시작합니다.";
     GUIStyle debugHint;
@@ -32,6 +34,8 @@ public sealed partial class ChamberGame
     public bool DebugAvailable=>Application.isPlaying && board!=null && lan!=null && !lan.Busy && !lan.Editing && phase!=Phase.Arrival;
     public int DebugMapWidth=>board==null?0:board.Width;
     public bool DebugAutomaticPatterns=>debugAutomatic;
+    public float DebugWarningSeconds=>debugWarningSeconds;
+    public float DebugTempo=>debugTempo;
     bool DebugHoldPatterns=>debugSession && !debugAutomatic && !lan.Busy;
 
     void UpdateDebugControls(){
@@ -42,8 +46,9 @@ public sealed partial class ChamberGame
 
     // Keep the player near their current position when changing the board.
     // Cancel all hazards and forced movement before reusing their tile indices.
+    // Preserve the automatic-pattern toggle; only the user changes that choice.
     void PrepareDebugArena(int width){
-        debugSession=true;debugAutomatic=false;
+        debugSession=true;
         debugBoardWidth=Mathf.Clamp(width,3,10);
         Vector3 position=first.Feet.position;
         arrow.Clear();potion.Clear();tide.Clear();lava.Clear();
@@ -54,6 +59,7 @@ public sealed partial class ChamberGame
         System.Array.Clear(exits,0,exits.Length);
         budget=0;poisonCenter=-1;followPotion=globalSpikes=singleShelter=spiralWave=false;
         patternName="";result="";deathMessage="";
+        if(board.Width!=debugBoardWidth)finalArenaSeconds=0;
         board.Resize(debugBoardWidth);
         first.Reset(board.Nearest(position),board);
         first.Feet.gameObject.SetActive(true);
@@ -87,7 +93,7 @@ public sealed partial class ChamberGame
         else if(selected<=ChamberDebugPattern.LiftDiagonal){kind=PatternKind.Lift;variant=index-(int)ChamberDebugPattern.LiftColumns;}
         else kind=PatternKind.Collapse;
         Warn(kind,variant);
-        debugMessage=DebugPatternLabels[index]+" · 예고부터 실행 중 (자동 진행 중지)";
+        debugMessage=DebugPatternLabels[index]+(debugAutomatic?" · 예고부터 실행 중 (이후 자동 진행)":" · 예고부터 실행 중 (이후 대기)");
         return true;
     }
 
@@ -109,7 +115,37 @@ public sealed partial class ChamberGame
     public bool DebugClearAttacks(){
         if(!DebugAvailable)return false;
         PrepareDebugArena(board.Width);
-        debugMessage="공격과 피격 상태를 정리했습니다. 다음 패턴을 선택하세요.";
+        debugMessage=debugAutomatic?"공격과 피격 상태를 정리했습니다. 자동 패턴을 계속 진행합니다.":"공격과 피격 상태를 정리했습니다. 다음 패턴을 선택하세요.";
+        return true;
+    }
+
+    public bool DebugSetWarningSeconds(float seconds){
+        if(!DebugAvailable || float.IsNaN(seconds) || float.IsInfinity(seconds))return false;
+        debugSession=true;debugBoardWidth=board.Width;
+        debugWarningSeconds=Mathf.Round(Mathf.Clamp(seconds,.1f,3f)*10)/10;
+        debugMessage=$"다음 패턴 발동 대기 {debugWarningSeconds:0.0}초 · 진행 중인 예고는 유지합니다.";
+        return true;
+    }
+
+    public bool DebugSetTempo(float tempo){
+        if(!DebugAvailable || float.IsNaN(tempo) || float.IsInfinity(tempo))return false;
+        debugSession=true;debugBoardWidth=board.Width;
+        debugTempo=Mathf.Round(Mathf.Clamp(tempo,1,FinalArenaMaxTempo)*10)/10;
+        debugMessage=$"다음 패턴부터 함정 배속 {debugTempo:0.0}배 · 예고 시간을 직접 지정하면 그 값이 우선합니다.";
+        return true;
+    }
+
+    public bool DebugUseAutomaticTempo(){
+        if(!DebugAvailable)return false;
+        debugTempo=-1;
+        debugMessage="다음 패턴부터 3×3 진입 시간에 따라 1~2배로 자동 가속합니다.";
+        return true;
+    }
+
+    public bool DebugUseAutomaticWarning(){
+        if(!DebugAvailable)return false;
+        debugWarningSeconds=-1;
+        debugMessage="다음 패턴부터 패턴별 기본 예고 시간에 현재 배속을 적용합니다.";
         return true;
     }
 
@@ -123,7 +159,7 @@ public sealed partial class ChamberGame
 
     public bool DebugRestoreNormalGame(){
         if(!DebugAvailable)return false;
-        debugSession=false;debugAutomatic=true;debugPressure=-1;debugBoardWidth=10;
+        debugSession=false;debugAutomatic=true;debugPressure=-1;debugWarningSeconds=-1;debugTempo=-1;debugBoardWidth=10;
         ResetBoard();deathFocus.Reveal(1);transitionTime=0;phase=Phase.AwaitStep;sound.ResumeMusic();
         debugMessage="10×10 일반 게임으로 복원했습니다. 최고 기록을 다시 저장합니다.";
         return true;
@@ -161,6 +197,29 @@ public sealed partial class ChamberGame
         if(GUILayout.Button("초반 0%"))DebugSetPressure(0);
         if(GUILayout.Button("중반 50%"))DebugSetPressure(.5f);
         if(GUILayout.Button("최대 100%"))DebugSetPressure(1);
+        GUILayout.EndHorizontal();
+        GUILayout.Space(5);
+        GUILayout.Label(debugTempo<0?$"함정 배속 · 자동 {FinalArenaTempo:0.00}배 · 3×3 {finalArenaSeconds:0.0}/{FinalArenaRampSeconds:0}초":$"함정 배속 · 수동 {debugTempo:0.0}배 (다음 패턴)");
+        float selectedTempo=debugTempo<0?FinalArenaTempo:debugTempo;
+        float changedTempo=GUILayout.HorizontalSlider(selectedTempo,1,FinalArenaMaxTempo);
+        if(Mathf.Abs(changedTempo-selectedTempo)>.001f)DebugSetTempo(changedTempo);
+        GUILayout.BeginHorizontal();
+        if(GUILayout.Button("자동"))DebugUseAutomaticTempo();
+        if(GUILayout.Button("1.0배"))DebugSetTempo(1);
+        if(GUILayout.Button("1.5배"))DebugSetTempo(1.5f);
+        if(GUILayout.Button("2.0배"))DebugSetTempo(2);
+        GUILayout.EndHorizontal();
+        GUILayout.Label("배속 예고 최소 0.6초 · 아래에서 초를 지정하면 우선 적용",debugHint);
+        GUILayout.Label(debugWarningSeconds<0?"함정 발동 대기 · 자동":$"함정 발동 대기 · {debugWarningSeconds:0.0}초 (다음 패턴)");
+        float selectedWarning=debugWarningSeconds<0?2f:debugWarningSeconds;
+        float changedWarning=GUILayout.HorizontalSlider(selectedWarning,.1f,3f);
+        if(Mathf.Abs(changedWarning-selectedWarning)>.001f)DebugSetWarningSeconds(changedWarning);
+        GUILayout.Label("빠름 0.1초 ← 예고 후 발동까지 → 느림 3.0초",debugHint);
+        GUILayout.BeginHorizontal();
+        if(GUILayout.Button("자동"))DebugUseAutomaticWarning();
+        if(GUILayout.Button("1.0초"))DebugSetWarningSeconds(1f);
+        if(GUILayout.Button("0.5초"))DebugSetWarningSeconds(.5f);
+        if(GUILayout.Button("0.1초"))DebugSetWarningSeconds(.1f);
         GUILayout.EndHorizontal();
         GUILayout.Space(6);GUILayout.Label("강제 패턴 (기존 공격 교체 · 예고부터 실행)");
         for(int i=0;i<DebugPatternLabels.Length;i+=2){

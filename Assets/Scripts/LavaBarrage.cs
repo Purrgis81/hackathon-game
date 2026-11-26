@@ -16,6 +16,8 @@ public sealed class LavaBarrage : IDisposable
     readonly bool[] sounded=new bool[Capacity];
     readonly Material targetInk,rock;
     float started=-100;
+    float beat=Beat;
+    public float WarningSeconds {get;private set;}=Lead;
     int count;
     Vector3 vent;
     RisingBoard board;
@@ -43,8 +45,9 @@ public sealed class LavaBarrage : IDisposable
         var renderer=obj.GetComponent<Renderer>();renderer.sharedMaterial=rock;renderer.shadowCastingMode=ShadowCastingMode.Off;
         return obj.transform;
     }
-    public void Plan(RisingBoard room,bool[] exits,float now,float pressure){
+    public void Plan(RisingBoard room,bool[] exits,float now,float pressure,float warningSeconds=Lead,float shotBeat=Beat){
         Clear();board=room;started=now;
+        WarningSeconds=warningSeconds;beat=shotBeat;
         var available=new List<int>();
         for(int i=0;i<room.Count;i++)if(!exits[i])available.Add(i);
         for(int i=available.Count-1;i>0;i--){
@@ -57,12 +60,12 @@ public sealed class LavaBarrage : IDisposable
     }
     public float LastDanger(int cell){
         if(!Active)return -1;
-        for(int i=0;i<count;i++)if(targets[i]==cell)return started+i*Beat+Lead+Hot;
+        for(int i=0;i<count;i++)if(targets[i]==cell)return StrikeAt(i)+Hot;
         return -1;
     }
     public int Target(int i)=>targets[i];
-    public float StrikeAt(int i)=>started+i*Beat+Lead;
-    public float End=>started+(count-1)*Beat+Lead+Hot+.42f;
+    public float StrikeAt(int i)=>started+i*beat+WarningSeconds;
+    public float End=>StrikeAt(count-1)+Hot+.42f;
     public float Contact(Vector3 from,Vector3 to,float now,float slice){
         if(!Active)return float.PositiveInfinity;
         float earliest=float.PositiveInfinity;
@@ -86,18 +89,19 @@ public sealed class LavaBarrage : IDisposable
     public void Draw(float now){
         if(!Active)return;
         for(int i=0;i<count;i++){
-            float age=now-StrikeAt(i),tell=age+Lead;
+            float age=now-StrikeAt(i),tell=age+WarningSeconds;
             var center=board.Tiles[targets[i]].transform.position;
             bool visible=tell>=0&&age<Hot+.42f;
             surfaces[i].enabled=visible;marks[i].position=center+Vector3.up*.065f;
             if(visible){
-                ink.SetFloat("_Progress",Mathf.Clamp01(tell/Lead));
+                ink.SetFloat("_Progress",Mathf.Clamp01(tell/WarningSeconds));
                 ink.SetFloat("_ImpactAge",age);ink.SetFloat("_Hot",Hot);surfaces[i].SetPropertyBlock(ink);
             }
-            bool falling=age>=-.74f&&age<0;
+            float fallSeconds=Mathf.Min(.74f,WarningSeconds);
+            bool falling=age>=-fallSeconds&&age<0;
             stones[i].gameObject.SetActive(falling);
             if(falling){
-                float t=(age+.74f)/.74f;
+                float t=(age+fallSeconds)/fallSeconds;
                 stones[i].position=Vector3.Lerp(vent,center+Vector3.up*.3f,t)+Vector3.up*(20*t*(1-t));
                 stones[i].localScale=new Vector3(.58f,.75f,.58f);
                 stones[i].rotation=Quaternion.Euler(t*460+i*43,t*190,27);
