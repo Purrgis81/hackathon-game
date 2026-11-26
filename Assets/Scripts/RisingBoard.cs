@@ -71,10 +71,11 @@ public sealed class RisingBoard
         return result;
     }
     Vector3 CameraPosition()=>aim+(home-aim)*(1+(Width-3)*.34f)+new Vector3(Center,0,Center);
-    public void Reset(){
-        RestoreLift();Width=10;fallingEnd=0;camera.transform.position=CameraPosition();
+    public void Reset()=>Resize(10);
+    public void Resize(int width){
+        RestoreLift();Width=Mathf.Clamp(width,3,10);fallingEnd=0;fallAge=0;camera.transform.position=CameraPosition();
         for(int i=0;i<Tiles.Length;i++){
-            Tiles[i].gameObject.SetActive(true);
+            Tiles[i].gameObject.SetActive(i<Count);
             SetHeight(i,0);
         }
     }
