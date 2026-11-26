@@ -7,26 +7,56 @@ public sealed class ChamberRunner
     public readonly ExplorerHop Hop;
     public readonly Transform View;
     Vector3 displayed;
-    int anticipated=-1;
-    float predictionAge;
-    Vector3 predictionFrom;
-    public void Anticipate(int target){
-        if(!Moving&&Alive&&target>=0){
-            anticipated=target;predictionAge=0;predictionFrom=Feet.position;
+    int visualFrom,visualTarget=-1,bufferedTarget=-1;
+    float visualTime,predictionAge;
+    public int NextVisualCell => visualTarget>=0 ? visualTarget : Target;
+
+    public void Anticipate(int target,float duration){
+        if(!Alive||Sliding||Stunned)return;
+        // The host keeps the most recent turn pressed before landing.
+        if(visualTarget<0&&Moving){
+            visualFrom=Cell;visualTarget=Target;visualTime=progress;
         }
+        if(visualTarget>=0&&visualTime<duration){
+            bufferedTarget=target;
+        }else if(target>=0){
+            visualFrom=NextVisualCell;visualTarget=target;visualTime=0;
+            bufferedTarget=-1;
+        }
+        predictionAge=0;
     }
-    public void ConfirmInput(){anticipated=-1;}
+
+    public void ClearPrediction(){
+        visualTarget=bufferedTarget=-1;
+        View.localRotation=Quaternion.identity;
+    }
     public void Present(RisingBoard board,float duration,float dt,bool freeze){
-        if(freeze||!Alive){anticipated=-1;displayed=Feet.position;View.localPosition=Vector3.zero;Hop.Present(dt,true);return;}
+        if(freeze||!Alive){ClearPrediction();displayed=Feet.position;View.localPosition=Vector3.zero;Hop.Present(dt,true);return;}
         predictionAge+=dt;
-        if(predictionAge>.45f)anticipated=-1;
+        if(visualTarget>=0){
+            if(Sliding||Stunned||visualFrom>=board.Count||visualTarget>=board.Count||predictionAge>.9f){
+                ClearPrediction();
+            }else{
+                visualTime+=dt;
+                if(visualTime>=duration&&bufferedTarget>=0&&bufferedTarget<board.Count){
+                    visualFrom=visualTarget;visualTarget=bufferedTarget;bufferedTarget=-1;visualTime-=duration;
+                }
+                var from=board.Tiles[visualFrom].transform.position;
+                var to=board.Tiles[visualTarget].transform.position;
+                var facing=to-from;facing.y=0;
+                if(facing.sqrMagnitude>.001f)View.rotation=Quaternion.LookRotation(facing);
+                float t=Mathf.Clamp01(visualTime/duration);
+                displayed=Vector3.Lerp(from,to,t);
+                View.position=displayed;
+                Hop.PresentLocalStep(t);
+                if(t>=1&&!Moving&&Cell==visualTarget)ClearPrediction();
+                return;
+            }
+        }
         Vector3 goal=Feet.position;
         if(Moving){
             var end=board.Tiles[Target].transform.position;
             goal=Vector3.MoveTowards(goal,end,RisingBoard.Spacing*.16f);
-        }else if(anticipated>=0){
-            goal=Vector3.Lerp(predictionFrom,board.Tiles[anticipated].transform.position,
-                Mathf.Clamp01(predictionAge/duration));
         }
         float speed=RisingBoard.Spacing/duration;
         displayed=Vector3.MoveTowards(displayed,goal,dt*speed*(Vector3.Distance(displayed,Feet.position)>RisingBoard.Spacing*.70f?1.35f:1));
@@ -56,7 +86,7 @@ public sealed class ChamberRunner
     public void WavePush(Vector2Int direction,int stamp,RisingBoard board){
         if(!Alive||LastWave==stamp)return;
         LastWave=stamp;Sliding=true;Stunned=false;WakeCount=0;stunAge=0;Buffered=Vector2Int.zero;
-        SlideDirection=direction;anticipated=-1;
+        SlideDirection=direction;ClearPrediction();
         Feet.rotation=Quaternion.LookRotation(new Vector3(direction.x,0,direction.y));
         Cell=Target=board.Nearest(Feet.position);progress=0;
     }
@@ -96,7 +126,7 @@ public sealed class ChamberRunner
         stepFrom=Feet.position;
         Buffered=Vector2Int.zero;
         progress=0;
-        anticipated=-1;displayed=Feet.position;View.localPosition=Vector3.zero;
+        ClearPrediction();displayed=Feet.position;View.localPosition=Vector3.zero;
         Hop.Reset();
     }
 

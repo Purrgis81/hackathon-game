@@ -39,6 +39,8 @@ public sealed class ChamberLan : IDisposable
     string address="",invite="",message="",code="",draftName;
     int draftColor,count=1,sequence,received,sent,epoch;
     float accumulator,lastSend,lastPing,connectingAt,playClock;
+    const int MinReserve=8,MaxReserve=24;
+    float lastHistoryAt,reserveTicks;
     public ChamberProfile Local {get;private set;}
     public ChamberProfile Profile(int index)=>roster[index];
     public int Slot {get;private set;}
@@ -150,6 +152,7 @@ public sealed class ChamberLan : IDisposable
     }
     void Begin(int seed){
         sequence=received=sent=0;accumulator=playClock=0;pending.Clear();commands.Clear();
+        lastHistoryAt=0;reserveTicks=MinReserve;
         foreach(var q in inputs)q.Clear();
         mode=Mode.Play;game.BeginDuel(seed,count);
         Debug.Log($"Chamber UDP: {count} players ready, slot {Slot+1}, {TickRate} Hz");
@@ -208,18 +211,19 @@ public sealed class ChamberLan : IDisposable
         }
     }
     void AdvanceGuest(float dt){
-        if(sequence==0&&received<3)return;
-        // A small buffer absorbs arrival jitter. Catch up gradually after a brief outage.
-        float rate=BufferedTicks>12?1.15f:BufferedTicks>5?1.04f:1;
+        if(sequence==0&&received<reserveTicks)return;
+        // Spend the reserve during a late delivery. Refill it gradually without
+        // skipping hazard transitions or running unconfirmed collision checks.
+        float rate=Mathf.Clamp(1f+(BufferedTicks-reserveTicks)*.015f,.90f,1.15f);
         playClock=Mathf.Min(playClock+Mathf.Min(dt,.1f)*rate,.1f);
         int steps=0;
         while(playClock>=Step&&pending.TryGetValue(sequence+1,out var frame)&&steps++<16){
             for(int i=0;i<count;i++)keys[i]=Decode((frame.Keys>>(i*3))&7);
-            if(keys[Slot]!=Vector2Int.zero)game.ConfirmLocalInput(Slot);
             int digest=game.DuelTick(keys,Step);
             if(digest!=frame.Hash)throw new InvalidOperationException($"게임 판정이 달라졌습니다. 틱 {frame.Number} · 방에 다시 참가하세요.");
             pending.Remove(++sequence);playClock-=Step;
         }
+        if(BufferedTicks==0)playClock=Mathf.Min(playClock,Step);
     }
     void SendCommands(){
         var bytes=Packet(Kind.Input,16+commands.Count*8,a:received,b:commands.Count);
@@ -285,7 +289,17 @@ public sealed class ChamberLan : IDisposable
                     if(n!=a+i||n<=sequence||n>sequence+HistorySize)continue;
                     pending[n]=new Frame{Number=n,Keys=Read(bytes,20+i*12),Hash=Read(bytes,24+i*12)};
                 }
+                int before=received;
                 while(pending.ContainsKey(received+1))received++;
+                if(received>before){
+                    float now=Time.realtimeSinceStartup;
+                    if(lastHistoryAt>0){
+                        float gap=now-lastHistoryAt;
+                        float needed=Mathf.Clamp(gap*TickRate+3,MinReserve,MaxReserve);
+                        reserveTicks=Mathf.Max(needed,reserveTicks-gap*.65f);
+                    }
+                    lastHistoryAt=now;
+                }
                 continue;
             }
         }

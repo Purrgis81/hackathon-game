@@ -396,9 +396,11 @@ public sealed partial class ChamberGame : MonoBehaviour
         if(actor.Sliding)return;
         if(!actor.Moving){
             int next=board.Neighbor(actor.Cell,direction);
+            if(next<0){actor.ClearPrediction();return;}
             for(int i=0;i<participants&&next>=0;i++){
                 var other=players[i];
                 if(other==actor||!other.Alive||!other.Occupies(next))continue;
+                actor.ClearPrediction();
                 if(elapsed-actor.BlockAt>.14f){
                     actor.BlockAt=elapsed;actor.Blocker=i;
                     actor.BlockPoint=(actor.Feet.position+tiles[next].transform.position)*.5f+Vector3.up*.78f;
@@ -466,12 +468,13 @@ public sealed partial class ChamberGame : MonoBehaviour
     }
 
     public void Anticipate(int slot,Vector2Int dir){
-        var p=players[slot];if(p.Moving||!p.Alive||p.Sliding||p.Stunned)return;
-        int target=board.Neighbor(p.Cell,dir);
-        for(int i=0;i<participants;i++)if(i!=slot&&players[i].Alive&&players[i].Occupies(target))return;
-        p.Anticipate(target);
+        var p=players[slot];if(!p.Alive||p.Sliding||p.Stunned)return;
+        int origin=p.NextVisualCell;
+        int target=origin<board.Count?board.Neighbor(origin,dir):-1;
+        for(int i=0;i<participants&&target>=0;i++)
+            if(i!=slot&&players[i].Alive&&players[i].Occupies(target))target=-1;
+        p.Anticipate(target,stepSeconds);
     }
-    public void ConfirmLocalInput(int slot)=>players[slot].ConfirmInput();
     void LateUpdate(){
         if(board==null)return;
         if(lan.InRoom){

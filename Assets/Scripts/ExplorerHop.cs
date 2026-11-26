@@ -61,6 +61,16 @@ public sealed class ExplorerHop
         stride = -stride;
     }
 
+    // Apply the local hop to the mesh only. The host's feet, facing, and
+    // collision trajectory continue to advance on confirmed simulation ticks.
+    public void PresentLocalStep(float t){
+        float flight=Mathf.InverseLerp(.12f,.9f,t);
+        float arc=4f*flight*(1f-flight);
+        body.localPosition=Vector3.up*(.41f*arc);
+        body.localRotation=Quaternion.Euler(12f*arc,0,0);
+        body.localScale=new Vector3(1-.05f*arc,1+.1f*arc,1-.05f*arc);
+    }
+
     public void Step(float t)
     {
         feet.rotation = Quaternion.Slerp(turnFrom, turnTo, Mathf.SmoothStep(0, 1, t/.48f));
