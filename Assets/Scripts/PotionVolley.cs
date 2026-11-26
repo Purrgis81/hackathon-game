@@ -68,10 +68,11 @@ public sealed class PotionVolley : MonoBehaviour
     }
 
     public void Aim(Vector3 point) {Clear();casting=true;target=point;}
-    public void Fall(float remaining)
+    public void Fall(float remaining,float warningSeconds=FallTime)
     {
-        if(!casting || remaining>FallTime)return;
-        float t=Mathf.Clamp01(1-remaining/FallTime);
+        float duration=Mathf.Min(FallTime,warningSeconds);
+        if(!casting || remaining>duration)return;
+        float t=Mathf.Clamp01(1-remaining/duration);
         bottle.gameObject.SetActive(true);
         bottle.position=target+new Vector3(-1.45f*(1-t),.34f+3.8f*(1-t*t),1.3f*(1-t));
         bottle.rotation=Quaternion.AngleAxis(52+t*102,Vector3.up)*Quaternion.AngleAxis(76+18*t,Vector3.forward);

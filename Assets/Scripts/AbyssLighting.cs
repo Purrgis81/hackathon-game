@@ -22,11 +22,11 @@ public sealed class AbyssLighting : MonoBehaviour
         overhead = lamp.AddComponent<Light>();
         overhead.type = LightType.Spot;
         overhead.renderMode = LightRenderMode.ForcePixel;
-        overhead.color = new Color(1,.89f,.69f);
+        overhead.color = new Color(1,.91f,.75f);
         overhead.range = 9;
-        overhead.spotAngle = 37;
-        overhead.innerSpotAngle = 17;
-        overhead.intensity = 2.3f;
+        overhead.spotAngle = 45;
+        overhead.innerSpotAngle = 24;
+        overhead.intensity = 1.8f;
         shaft = new GameObject("Dust in the shaft").transform;
         shaft.SetParent(lamp.transform.parent,false);
         shaft.gameObject.AddComponent<MeshFilter>().sharedMesh = quad;

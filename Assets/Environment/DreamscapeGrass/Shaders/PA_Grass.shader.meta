@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 70ff6e3a81c1f424c9f9da756571a30f
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures:
+  - _WindNoiseTexture: {fileID: 2800000, guid: 7156872dfec946b40b0c19e401a2fe74, type: 3}
+  - _VariationMask: {fileID: 2800000, guid: 7156872dfec946b40b0c19e401a2fe74, type: 3}
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 186894
+  packageName: 'Dreamscape Nature : Meadows : Stylized Open World Environment'
+  packageVersion: 2.2
+  assetPath: Assets/Polyart/PolyartStudio/SharedResources/Shaders/Foliage/PA_Grass.shader
+  uploadId: 866086

@@ -19,11 +19,12 @@ public sealed class TidalWave : IDisposable
     public int Sign {get;private set;}
     public int Signature {get;private set;}
     public Vector2Int PushDirection=>Horizontal?new Vector2Int(Sign,0):new Vector2Int(0,Sign);
+    public float Speed=>speed;
     public float TravelSeconds=>distance/speed;
     public Vector3 Position(float age)=>start+forward*(speed*Mathf.Clamp(age,0,TravelSeconds));
     public TidalWave(Transform parent,Mesh quad){
         root=new GameObject("Crossing tidal wave").transform;root.SetParent(parent,false);
-        water=new Material(Resources.Load<Shader>("TidalWater"));
+        water=new Material(Resources.Load<Shader>("Environment/Water/Shaders/TidalWater"));
         preview=new Material(Resources.Load<Shader>("TidalGuide"));
         crest=new GameObject("Curled water and foam").transform;crest.SetParent(root,false);
         mesh=MakeCrest();crest.gameObject.AddComponent<MeshFilter>().sharedMesh=mesh;
