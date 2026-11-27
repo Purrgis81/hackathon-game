@@ -20,7 +20,7 @@ public struct ChamberProfile
     public Color ModelTint(int slot)=>Swatch<0?Tint(slot):Color.Lerp(Color.white,Tint(slot),Swatch==0?.12f:.60f);
     public static ChamberProfile Create(string name,int swatch,int animal=0){
         var b=new StringBuilder();
-        foreach(char ch in (name??"").Trim()){
+        foreach(char ch in (name??"").Normalize(NormalizationForm.FormC).Trim()){
             if(b.Length>=12)break;
             if(char.IsLetterOrDigit(ch)||ch==' '||ch=='_'||ch=='-')b.Append(ch);
         }

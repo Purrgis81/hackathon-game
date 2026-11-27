@@ -7,6 +7,13 @@ Audio supplied for the five-round party match:
 | Movement (JumpStep) | bestuploadsever67aryan-jump-sound-531048.mp3 |
 | Awards (PodiumFanfare) | emand_edroff-victory-bell-success-fanfare-576275.mp3 |
 | Game theme (PartyTheme) | bearstockmusic-cartoon-funny-theme-578155 (1).mp3 |
+| Countdown voice (CountdownVoice3 / 2 / 1) | anasounds-woman-counting-down-297173.mp3 |
+| Film countdown (CountdownFilm3 / 2 / 1) | freesound_community-film-countdown-88717.mp3 |
+| 8-bit countdown (CountdownEightBit3 / 2 / 1) | lesiakower-countdown-sound-effect-8-bit-151797.mp3 |
+| Short beep countdown (CountdownShortBeep3 / 2 / 1) | freesound_community-short-beep-countdown-81121.mp3 |
+| Arcade countdown (CountdownArcade3 / 2 / 1) | freesound_community-arcade-countdown-7007.mp3 |
+
+The five countdown recordings were supplied by the user. Each is split into three short, level-matched mono WAV cues with trimmed silence and brief edge fades. Only the first three pulses of the 8-bit, short-beep and arcade recordings are used; START retains StartWhistle. Choose a style and volume on the ChamberGame component using **카운트다운 사운드** and **카운트다운 음량**. These are local presentation settings and do not change the match countdown timing.
 
 The sources below use [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), except Lava splash, which uses [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
 

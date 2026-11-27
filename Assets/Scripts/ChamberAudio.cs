@@ -1,12 +1,21 @@
 using UnityEngine;
 
 public enum TrapKind { Spike, Arrow, Poison, Fall, Wave, Lava }
+public enum CountdownSoundStyle {
+    [InspectorName("여성 음성")] Voice,
+    [InspectorName("영화 카운트다운")] Film,
+    [InspectorName("8비트")] EightBit,
+    [InspectorName("짧은 비프음")] ShortBeep,
+    [InspectorName("아케이드")] Arcade
+}
 
 public sealed class ChamberAudio : MonoBehaviour
 {
     AudioSource music, room, mechanism, effects, impact, movement;
     AudioLowPassFilter musicFilter;
     AudioClip latch, lift, block, startWhistle;
+    AudioSource countdown;
+    readonly AudioClip[,] countdownClips=new AudioClip[5,3];
     AudioSource collisions;
     AudioSource hazardWarnings;
     AudioClip waveWarning,lavaWarning;
@@ -43,6 +52,11 @@ public sealed class ChamberAudio : MonoBehaviour
         hits = new[] { Clip("SpikeHit"), Clip("ArrowHit"), Clip("PoisonHit"),block,Clip("WaveHit"),Clip("LavaImpact") };
         latch = Clip("PlateLatch");
         startWhistle = Clip("StartWhistle");
+        countdown = Source();
+        var styles=new[]{"Voice","Film","EightBit","ShortBeep","Arcade"};
+        for(int style=0;style<styles.Length;style++)
+            for(int number=1;number<=3;number++)
+                countdownClips[style,number-1]=Clip("Countdown"+styles[style]+number);
     }
 
     AudioSource Source()
@@ -55,11 +69,28 @@ public sealed class ChamberAudio : MonoBehaviour
 
     static AudioClip Clip(string name) => Resources.Load<AudioClip>("Sound/" + name);
 
-    public void StartWhistle() => effects.PlayOneShot(startWhistle,.65f);
+    public void Countdown(int number,CountdownSoundStyle style,float volume)
+    {
+        if(number<1||number>3)return;
+        countdown.Stop();
+        countdown.clip=countdownClips[Mathf.Clamp((int)style,0,countdownClips.GetLength(0)-1),number-1];
+        countdown.volume=Mathf.Clamp01(volume);
+        if(countdown.clip)countdown.Play();
+    }
+
+    public void StartWhistle()
+    {
+        countdown.Stop();
+        effects.PlayOneShot(startWhistle,.65f);
+    }
+
+    public void PauseMusic() => music.Pause();
 
     public void ResumeMusic()
     {
+        countdown.Stop();
         hazardWarnings.Stop();
+        music.UnPause();
         if (!music.isPlaying) music.Play();
         targetVolume = MusicVolume * .58f;
         targetCutoff = 8500f;

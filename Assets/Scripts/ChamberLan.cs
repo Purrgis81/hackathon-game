@@ -185,6 +185,8 @@ public sealed partial class ChamberLan : IDisposable
     }
     public void StartMatch(){
         if(!CanStart)return;
+        CommitBotNames();
+        StopBotNameIme();
         int seed=Guid.NewGuid().GetHashCode();
         foreach(var p in peers)p.Control.Enqueue(Packet(Kind.Start,a:seed,b:count));
         Begin(seed);
@@ -497,7 +499,8 @@ public sealed partial class ChamberLan : IDisposable
             var role=i==0?"방장":bot?"봇 · 준비 완료":occupied?(IsSeatReady(i)?"준비 완료":"준비 전"):"빈자리";
             UI.Text(ribbon,$"{i+1}P  ·  {role}",13,occupied&&i>0?paper:ink,true);
             string name=occupied?roster[i].Label(i):(practice?"봇 대기석":"참가 대기 중");
-            UI.Text(new Rect(card.x+5,y+36,span-10,30),name,18,ink,true);
+            if(host&&bot)DrawBotName(i,x,y+37,span);
+            else UI.Text(new Rect(card.x+5,y+36,span-10,30),name,18,ink,true);
             if(occupied && !bot)
                 UI.Text(new Rect(card.x+5,y+69,span-10,23),i==Slot?"내 캐릭터":"친구",14,PartyMenuUI.Muted);
             DrawBotSeat(i,x,y+68,span);
@@ -505,8 +508,9 @@ public sealed partial class ChamberLan : IDisposable
         bool canAct=!host||CanStart;
         string action=host?(CanStart?"게임 시작":count<2?(practice?"봇을 추가하세요":"친구 대기 중"):"준비 대기 중"):(requestedReady?"준비 취소":"준비");
         if(UI.Button(new Rect(middle-151,footer,184,36),action,PartyMenuUI.Gold,ink,18,MenuTone.Confirm,canAct)){
-            if(host)StartMatch();else SetReady(!requestedReady);
+            if(host){CommitFocusedBotName();StartMatch();}else SetReady(!requestedReady);
         }
         if(UI.Button(new Rect(middle+45,footer,106,36),"방 나가기",ink,paper,15,MenuTone.Back))Leave();
+        UpdateBotNameIme();
     }
 }

@@ -12,6 +12,10 @@ public sealed partial class ChamberGame : MonoBehaviour
     public Camera chamberCamera;
     [Min(0.01f)] public float stepSeconds = 0.16f;
     [Min(0.2f)] public float firstWarning = 1.35f;
+    [InspectorName("카운트다운 사운드")]
+    public CountdownSoundStyle countdownSoundStyle=CountdownSoundStyle.Voice;
+    [Range(0,1),InspectorName("카운트다운 음량")]
+    public float countdownVolume=.8f;
     const float SpikeSeconds = 0.46f;
     const float FinalArenaRampSeconds=60f, FinalArenaMaxTempo=2f, MinimumTrapWarning=.6f;
     const string RecordKey = "StoneChamber.Best";
@@ -71,6 +75,14 @@ public sealed partial class ChamberGame : MonoBehaviour
     double countdownLeft;
     float startBannerLeft;
     GUIStyle startLabel;
+    Font playerNameFont;
+    internal Font PlayerNameFont {
+        get {
+            if(!playerNameFont)playerNameFont=Font.CreateDynamicFontFromOSFont(
+                new[]{"Malgun Gothic","Apple SD Gothic Neo","Noto Sans CJK KR","Arial"},18);
+            return playerNameFont;
+        }
+    }
     MatchTextOverlay startText;
     GameObject[] startCues;
     int localDuelSlot;
@@ -185,8 +197,8 @@ public sealed partial class ChamberGame : MonoBehaviour
         ResetBoard();
         arrival = gameObject.AddComponent<ChamberArrival>();
         arrival.Prepare(this,first.Hop);
-        BeginCountdown(withArrival: true);
         sound.ResumeMusic();
+        BeginCountdown(withArrival: true);
     }
 
     public void ApplyProfiles(){
@@ -561,7 +573,7 @@ public sealed partial class ChamberGame : MonoBehaviour
             int j=draw.Next(i+1);
             (tiePriority[i],tiePriority[j])=(tiePriority[j],tiePriority[i]);
         }
-        System.Array.Clear(wins,0,wins.Length);ApplyProfiles();ResetBoard();BeginCountdown();sound.ResumeMusic();
+        System.Array.Clear(wins,0,wins.Length);ApplyProfiles();ResetBoard();sound.ResumeMusic();BeginCountdown();
     }
     public void EndDuel(){
         System.Array.Clear(bots,0,bots.Length);
@@ -653,11 +665,14 @@ public sealed partial class ChamberGame : MonoBehaviour
         phase=withArrival ? Phase.Arrival : Phase.Countdown;
         countdownLeft=3;
         startBannerLeft=0;
+        sound.PauseMusic();
+        sound.Countdown(3,countdownSoundStyle,countdownVolume);
     }
 
     void Simulate(float dt)
     {
         if(CountingDown){
+            int previousCue=Mathf.CeilToInt((float)countdownLeft);
             if(phase==Phase.Arrival && arrival.Advance(dt))phase=Phase.Countdown;
             countdownLeft-=dt;
             if(countdownLeft<=0){
@@ -665,6 +680,10 @@ public sealed partial class ChamberGame : MonoBehaviour
                 else StartOpeningTrap(first.Cell);
                 startBannerLeft=.8f;
                 sound.StartWhistle();
+                sound.ResumeMusic();
+            }else{
+                int cue=Mathf.CeilToInt((float)countdownLeft);
+                if(cue!=previousCue)sound.Countdown(cue,countdownSoundStyle,countdownVolume);
             }
             return;
         }
@@ -987,7 +1006,7 @@ public sealed partial class ChamberGame : MonoBehaviour
     }
     void OnDisable() => startText?.Hide();
 
-    void OnDestroy() { MenuUI?.Dispose();titleScreen?.Dispose();startText?.Dispose();lan?.Dispose();tide?.Dispose();lava?.Dispose(); if (poisonMaterial) Destroy(poisonMaterial);if(groundCrackMaterial)Destroy(groundCrackMaterial); }
+    void OnDestroy() { MenuUI?.Dispose();titleScreen?.Dispose();startText?.Dispose();lan?.Dispose();tide?.Dispose();lava?.Dispose(); if (poisonMaterial) Destroy(poisonMaterial);if(groundCrackMaterial)Destroy(groundCrackMaterial);if(playerNameFont)Destroy(playerNameFont); }
 
     void OnGUI()
     {
@@ -1020,7 +1039,7 @@ public sealed partial class ChamberGame : MonoBehaviour
         if (phase == Phase.Returning || MatchFinished) return;
         title ??= new GUIStyle(GUI.skin.label) { fontSize = 24, fontStyle = FontStyle.Bold };
         score ??= new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleRight, fontSize = 16 };
-        hint ??= new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 15 };
+        hint ??= new GUIStyle(GUI.skin.label) { font=PlayerNameFont, alignment = TextAnchor.MiddleCenter, fontSize = 15 };
         float scale = Mathf.Clamp(Screen.height / 640f, 0.65f, 1.6f);
         GUI.matrix = Matrix4x4.Scale(Vector3.one * scale);
         float w = Screen.width / scale, h = Screen.height / scale;
