@@ -67,7 +67,7 @@ public sealed partial class ChamberGame : MonoBehaviour
     UnityEngine.Random.State duelRandom;
     public bool MatchFinished => phase==Phase.Results;
     public bool RoundFinished => phase==Phase.Dead || phase==Phase.Returning || MatchFinished;
-    public bool CountingDown => phase==Phase.Countdown;
+    public bool CountingDown => phase==Phase.Countdown || phase==Phase.Arrival;
     double countdownLeft;
     float startBannerLeft;
     GUIStyle startLabel;
@@ -183,7 +183,8 @@ public sealed partial class ChamberGame : MonoBehaviour
         ResetBoard();
         arrival = gameObject.AddComponent<ChamberArrival>();
         arrival.Prepare(this,first.Hop);
-        phase = Phase.Arrival;
+        BeginCountdown(withArrival: true);
+        sound.ResumeMusic();
     }
 
     public void ApplyProfiles(){
@@ -248,10 +249,7 @@ public sealed partial class ChamberGame : MonoBehaviour
             phase = Phase.Returning;
         }
         deathFocus.Reveal(transitionTime/DeathFocus.Reopen);
-        if (transitionTime >= DeathFocus.Reopen) {
-            if(duel) BeginCountdown();
-            else phase=Phase.SoloReady;
-        }
+        if (transitionTime >= DeathFocus.Reopen) BeginCountdown();
     }
 
     void Warn(PatternKind requested=PatternKind.Automatic,int variant=0)
@@ -516,11 +514,15 @@ public sealed partial class ChamberGame : MonoBehaviour
         }
         if(!actor.TryStep(direction,board))return;
         sound.PushOff(actor == players[duel ? localDuelSlot : 0]);
-        if(phase!=Phase.AwaitStep)return;
+        if(phase==Phase.AwaitStep)StartOpeningTrap(actor.Cell);
+    }
+
+    void StartOpeningTrap(int cell)
+    {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         if(DebugHoldPatterns){phase=Phase.Rest;remaining=.1f;return;}
 #endif
-        openingTile=actor.Cell;
+        openingTile=cell;
         System.Array.Clear(dangerous,0,dangerous.Length);
         spikeOrder.Clear();onsets.Clear();AddSpike(openingTile,0);budget=0;
         dangerous[openingTile]=true;
@@ -639,15 +641,14 @@ public sealed partial class ChamberGame : MonoBehaviour
             return;
         }
         if(MatchFinished)return;
-        if(phase==Phase.Arrival){Tick(Time.deltaTime);return;}
         if(RoundFinished){OpenForRetry(Time.unscaledDeltaTime);return;}
         Move(first,ReadDirection());
         Simulate(Mathf.Min(Time.deltaTime,.12f));
     }
 
-    void BeginCountdown()
+    void BeginCountdown(bool withArrival=false)
     {
-        phase=Phase.Countdown;
+        phase=withArrival ? Phase.Arrival : Phase.Countdown;
         countdownLeft=3;
         startBannerLeft=0;
     }
@@ -655,9 +656,11 @@ public sealed partial class ChamberGame : MonoBehaviour
     void Simulate(float dt)
     {
         if(CountingDown){
+            if(phase==Phase.Arrival && arrival.Advance(dt))phase=Phase.Countdown;
             countdownLeft-=dt;
             if(countdownLeft<=0){
-                phase=Phase.AwaitStep;
+                if(duel)phase=Phase.AwaitStep;
+                else StartOpeningTrap(first.Cell);
                 startBannerLeft=.8f;
                 sound.StartWhistle();
             }
@@ -672,15 +675,6 @@ public sealed partial class ChamberGame : MonoBehaviour
     }
     void Tick(float dt)
     {
-        if (phase == Phase.Arrival)
-        {
-            if (arrival.Advance(dt))
-            {
-                phase = Phase.SoloReady;
-                sound.ResumeMusic();
-            }
-            return;
-        }
         // Split at arrivals and phase boundaries so a newly active trap is sampled at its actual time.
         while (dt > 0 && phase != Phase.Dead && phase != Phase.Returning && phase != Phase.Arrival && phase != Phase.AwaitStep)
         {
@@ -1001,7 +995,7 @@ public sealed partial class ChamberGame : MonoBehaviour
                 if(lan.Busy || lan.Editing){
                     float scale=Mathf.Clamp(Screen.height/640f,.65f,1.6f);
                     GUI.matrix=Matrix4x4.Scale(Vector3.one*scale);
-                    lan.Draw(Screen.width/scale,Screen.height/scale,true);
+                    lan.Draw(Screen.width/scale,Screen.height/scale);
                 }else{
                     switch(titleScreen.Draw()){
                         case ChamberTitleScreen.Choice.Friends: lan.OpenMenu();break;
@@ -1021,14 +1015,14 @@ public sealed partial class ChamberGame : MonoBehaviour
 
     void DrawGameUI()
     {
-        if (phase == Phase.Arrival || phase == Phase.Returning || MatchFinished) return;
+        if (phase == Phase.Returning || MatchFinished) return;
         title ??= new GUIStyle(GUI.skin.label) { fontSize = 24, fontStyle = FontStyle.Bold };
         score ??= new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleRight, fontSize = 16 };
         hint ??= new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 15 };
         float scale = Mathf.Clamp(Screen.height / 640f, 0.65f, 1.6f);
         GUI.matrix = Matrix4x4.Scale(Vector3.one * scale);
         float w = Screen.width / scale, h = Screen.height / scale;
-        lan.Draw(w,h,phase==Phase.SoloReady);
+        if(lan.Busy)lan.Draw(w,h);
         if(lan.Editing||(lan.Busy && !duel))return;
         if(CountingDown || startBannerLeft>0 && !RoundFinished){
             if (startText?.Visible != true) DrawStartCue(w,h);

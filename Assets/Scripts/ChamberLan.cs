@@ -384,18 +384,12 @@ public sealed partial class ChamberLan : IDisposable
         if(played)game.EndDuel();
     }
     public void Dispose(){wardrobe?.Dispose();wardrobe=null;editing=false;if(Busy)Application.runInBackground=previousBackground;Close();mode=Mode.Offline;message="";}
-    public void Draw(float width,float height,bool canOpen){
+    public void Draw(float width,float height){
         if(!Busy){
-            if(!canOpen)return;
-            if(editing){
-                var action=wardrobe.Draw();
-                if(action==ChamberWardrobe.Action.Save){Local=wardrobe.Profile;Local.Save();game.ApplyProfiles();}
-                if(action!=ChamberWardrobe.Action.None){editing=false;wardrobe.Close();}
-            }else{
-                if(GUI.Button(new Rect((width-200)/2,height-201,200,34),"캐릭터 설정"))OpenProfile();
-                if(GUI.Button(new Rect((width-200)/2,height-160,200,34),"친구와 대전"))OpenMenu();
-                if(GUI.Button(new Rect((width-200)/2,height-119,200,34),"봇과 대전"))OpenBotRoom();
-            }
+            if(!editing)return;
+            var action=wardrobe.Draw();
+            if(action==ChamberWardrobe.Action.Save){Local=wardrobe.Profile;Local.Save();game.ApplyProfiles();}
+            if(action!=ChamberWardrobe.Action.None){editing=false;wardrobe.Close();}
             return;
         }
         if(Playing){if(GUI.Button(new Rect(width-86,64,70,27),"방 나가기"))Leave();return;}
