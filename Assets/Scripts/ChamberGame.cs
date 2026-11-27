@@ -515,7 +515,7 @@ public sealed partial class ChamberGame : MonoBehaviour
             }
         }
         if(!actor.TryStep(direction,board))return;
-        sound.PushOff();
+        sound.PushOff(actor == players[duel ? localDuelSlot : 0]);
         if(phase!=Phase.AwaitStep)return;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         if(DebugHoldPatterns){phase=Phase.Rest;remaining=.1f;return;}

@@ -114,8 +114,8 @@ public static class ChamberScene
         cameraObj.transform.LookAt(new Vector3(0,.15f,0));
         var camera = cameraObj.AddComponent<Camera>(); game.chamberCamera = camera;
         camera.fieldOfView = 38;
-        camera.clearFlags = CameraClearFlags.SolidColor;
-        camera.backgroundColor = Color.black;
+        RenderSettings.skybox = AssetDatabase.LoadAssetAtPath<Material>(Coast + "Pastel Coast Skybox.mat");
+        camera.clearFlags = CameraClearFlags.Skybox;
         var sun = Node("Warm shaft of light", null, Vector3.up*8).AddComponent<Light>();
         sun.type = LightType.Directional; sun.transform.rotation = Quaternion.Euler(50,-33,0);
         sun.intensity = .72f; sun.color = new Color(.84f,.91f,1); sun.shadows = LightShadows.Soft;

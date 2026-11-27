@@ -72,11 +72,11 @@ public sealed class ChamberAudio : MonoBehaviour
             1-Mathf.Exp(-Time.unscaledDeltaTime*10));
     }
 
-    public void PushOff()
+    public void PushOff(bool isLocalPlayer)
     {
         targetVolume = MusicVolume;
         targetCutoff = 15000f;
-        movement.PlayOneShot(lift,.36f);
+        if (isLocalPlayer) movement.PlayOneShot(lift,.36f);
     }
 
     public void Block(float pan)

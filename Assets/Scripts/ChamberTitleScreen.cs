@@ -78,7 +78,8 @@ internal sealed class ChamberTitleScreen
         water.localPosition=new Vector3(waterHome.x,-2.15f,waterHome.z);
         board.Resize(3);
         var aim=board.Tiles[4].transform.position+Vector3.up*.23f;
-        camera.transform.position=aim+new Vector3(0,7.5f,-15);
+        // Keep the coastal horizon above the island in the group portrait.
+        camera.transform.position=aim+new Vector3(0,2.55f,-16.4f);
         camera.transform.LookAt(aim);
         Pose();
     }
