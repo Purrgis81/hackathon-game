@@ -10,6 +10,7 @@ internal sealed class ChamberTitleScreen
     };
     const int ModeCount = 3;
     const float Beat = 8.4f, Takeoff = 2.8f, Flight = .56f;
+    readonly PartyMenuUI ui;
     readonly RisingBoard board;
     readonly Camera camera;
     readonly Transform water, cast;
@@ -42,6 +43,7 @@ internal sealed class ChamberTitleScreen
 
     public ChamberTitleScreen(ChamberGame game, RisingBoard board,string title,Font titleFont)
     {
+        ui=game.MenuUI;
         this.titleFont=titleFont;
         words=title.Split(new[]{' '},System.StringSplitOptions.RemoveEmptyEntries);
         wordWidths=new float[words.Length];
@@ -139,7 +141,7 @@ internal sealed class ChamberTitleScreen
         }
     }
 
-    void ShowMenu(){menu=true;openedFrame=Time.frameCount;selection=0;}
+    void ShowMenu(){if(!menu)ui.Sound(MenuTone.Confirm);menu=true;openedFrame=Time.frameCount;selection=0;}
 
     public Choice Draw()
     {
@@ -173,6 +175,7 @@ internal sealed class ChamberTitleScreen
             Label(pill,"아무 키나 눌러 시작",19,Cream);
             return Choice.None;
         }
+        int previousSelection=selection;
         if(Time.frameCount!=openedFrame && e.type==EventType.KeyDown){
             switch(e.keyCode){
                 case KeyCode.LeftArrow: case KeyCode.RightArrow:
@@ -186,26 +189,33 @@ internal sealed class ChamberTitleScreen
                     if(selection==ModeCount)selection=1;
                     e.Use();break;
                 case KeyCode.KeypadEnter: case KeyCode.Return: case KeyCode.Space:
-                    e.Use();return MenuItems[selection].action;
-                case KeyCode.Escape: menu=false; e.Use();return Choice.None;
+                    e.Use();ui.Sound(MenuTone.Confirm);return MenuItems[selection].action;
+                case KeyCode.Escape: ui.Sound(MenuTone.Back);menu=false; e.Use();return Choice.None;
             }
         }
-        const float buttonWidth=186, gap=18;
+        const float buttonWidth=190, gap=10;
+        float top=h-137;
         for(int i=0;i<MenuItems.Length;i++){
             bool primary=i<ModeCount;
             float center=w*.5f+(primary?(i-1)*(buttonWidth+gap):0);
-            var rect=new Rect(center-buttonWidth*.5f,h*.79f+(primary?0:62),buttonWidth,primary?51:34);
+            var rect=new Rect(center-buttonWidth*.5f,top+(primary?0:68),buttonWidth,primary?52:34);
             if(e.type==EventType.MouseMove && rect.Contains(e.mousePosition))selection=i;
             bool chosen=selection==i;
             if(primary){
-                var shadow=rect;shadow.y+=4;
-                Plate(shadow,Ink,22);
-                Plate(rect,chosen?Gold:Cream,22);
-            }else Plate(rect,chosen?Cream:Ink,16);
-            Label(rect,MenuItems[i].label,primary?23:15,
-                primary||chosen?Ink:Cream);
-            if(GUI.Button(rect,GUIContent.none,GUIStyle.none) && Time.frameCount!=openedFrame)return MenuItems[i].action;
+                if(chosen)rect.y-=4;
+                var edge=rect;edge.y+=4;
+                Plate(edge,Ink,14);Plate(rect,chosen?Gold:Cream,14);
+                Rect badge=new Rect(rect.x+9,rect.y+8,36,36);
+                Plate(badge,chosen?Ink:PartyMenuUI.Mint,10);
+                PartyMenuUI.ModeIcon(new Rect(badge.x+5,badge.y+5,26,26),i,chosen?Gold:Ink);
+                ui.Text(new Rect(rect.x+49,rect.y,rect.width-52,rect.height),MenuItems[i].label,22,Ink,true);
+            }else{
+                Plate(rect,chosen?Gold:Ink,15);
+                ui.Text(rect,MenuItems[i].label,16,chosen?Ink:Cream,true);
+            }
+            if(Time.frameCount!=openedFrame && ui.Hit(rect))return MenuItems[i].action;
         }
+        if(previousSelection!=selection)ui.Sound(MenuTone.Focus);
         return Choice.None;
     }
 

@@ -45,20 +45,22 @@ public sealed partial class ChamberLan
         if(key!=0&&!game.RoundFinished&&!game.CountingDown&&inputs[0].Count<8)inputs[0].Enqueue(key);
     }
     void DrawBotSeat(int seat,float x,float y,float span){
-        float width=Mathf.Min(190,span-8),left=x-width/2;
+        float width=span-16,left=x-width/2;
+        var ink=PartyMenuUI.Navy;var mint=PartyMenuUI.Mint;
         if(IsBot(seat)){
             var settings=BotSettings(seat);
             if(host){
-                if(GUI.Button(new Rect(left,y,width,24),"성향: "+ChamberBotSettings.Personalities[(int)settings.Personality])){
+                if(UI.Button(new Rect(left,y,width,24),"성향 · "+ChamberBotSettings.Personalities[(int)settings.Personality],mint,ink,13)){
                     settings.Personality=(ChamberBotPersonality)(((int)settings.Personality+1)%4);SetBot(seat,settings);
                 }
-                if(GUI.Button(new Rect(left,y+28,width,24),"난이도: "+ChamberBotSettings.Difficulties[(int)settings.Difficulty])){
+                if(UI.Button(new Rect(left,y+29,width,24),"난이도 · "+ChamberBotSettings.Difficulties[(int)settings.Difficulty],mint,ink,13)){
                     settings.Difficulty=(ChamberBotDifficulty)(((int)settings.Difficulty+1)%3);SetBot(seat,settings);
                 }
-                if(GUI.Button(new Rect(left,y+56,width,23),"봇 빼기"))RemoveBot(seat);
-            }else GUI.Label(new Rect(left,y,width,24),settings.Label,seatRole);
-        }else if(host&&seat==count&&count<Capacity){
-            if(GUI.Button(new Rect(left,y,width,28),"봇 추가"))AddBot((ChamberBotPersonality)(botSeats.Count%4));
+                if(UI.Button(new Rect(left,y+58,width,22),"봇 빼기",ink,PartyMenuUI.Paper,13,MenuTone.Back))RemoveBot(seat);
+            }else UI.Text(new Rect(left,y,width,32),settings.Label,13,ink);
+        }else if(host && seat==count && count<Capacity){
+            if(UI.Button(new Rect(left,y+3,width,32),"+  봇 추가",PartyMenuUI.Teal,PartyMenuUI.Paper,15))
+                AddBot((ChamberBotPersonality)(botSeats.Count%4));
         }
     }
 }

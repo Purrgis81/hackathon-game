@@ -84,7 +84,7 @@ public sealed partial class ChamberLan : IDisposable
     }
     public void OpenProfile(){
         if(Busy || editing)return;
-        wardrobe ??= new ChamberWardrobe(game.transform);
+        wardrobe ??= new ChamberWardrobe(game.transform,game.MenuUI);
         wardrobe.Open(Local);
         editing=true;
     }
@@ -392,69 +392,121 @@ public sealed partial class ChamberLan : IDisposable
             if(action!=ChamberWardrobe.Action.None){editing=false;wardrobe.Close();}
             return;
         }
-        if(Playing){if(GUI.Button(new Rect(width-86,64,70,27),"방 나가기"))Leave();return;}
+        if(Playing){if(game.MenuUI.Button(new Rect(width-100,64,86,30),"방 나가기",PartyMenuUI.Mint,PartyMenuUI.Navy,14,MenuTone.Back))Leave();return;}
         if(InRoom){DrawRoom(width,height);return;}
-        float w=Mathf.Min(420,width-20);
-        GUILayout.BeginArea(new Rect((width-w)/2,(height-390)/2,w,390),GUI.skin.box);
-        GUILayout.Label($"친구와 대전 · 2~{Capacity}명");
-        if(mode==Mode.Menu){
-#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
-            transportTab=GUILayout.Toolbar(transportTab,new[]{"Steam","기타 연결"});
-            if(transportTab==0){
-                if(GUILayout.Button("Steam 방 만들기",GUILayout.Height(33)))SteamRoom(true);
-                GUILayout.Label("Steam 방 코드");
-                steamCode=GUILayout.TextField(steamCode,40);
-                if(GUILayout.Button("Steam 코드로 참가"))SteamRoom(false);
-            }else{
-#endif
-            if(GUILayout.Button("Unity Relay 방 만들기",GUILayout.Height(33)))OnlineRoom(true);
-            code=GUILayout.TextField(code,12);
-            if(GUILayout.Button("초대 코드로 참가"))OnlineRoom(false);
-            if(string.IsNullOrEmpty(Application.cloudProjectId))
-                GUILayout.Label("온라인 기능은 Unity Cloud 프로젝트 연결 후 사용할 수 있습니다.");
-            GUILayout.Space(12);
-            if(GUILayout.Button("직접 연결 방 만들기"))HostRoom();
-            GUILayout.Label("방장 IP");address=GUILayout.TextField(address,45);
-            if(GUILayout.Button("IP로 직접 참가"))JoinRoom(address);
-#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
-            }
-#endif
-            GUILayout.Label(message);
-        }else GUILayout.Label("방장에게 연결하는 중…");
-        if(GUILayout.Button("돌아가기"))Leave();
-        GUILayout.EndArea();
+        DrawConnection(width,height);
     }
 
-    GUIStyle roomTitle,seatName,seatRole;
+    PartyMenuUI UI=>game.MenuUI;
+    void DrawConnection(float width,float height){
+        var ink=PartyMenuUI.Navy;var paper=PartyMenuUI.Paper;var mint=PartyMenuUI.Mint;
+        PartyMenuUI.Fill(new Rect(0,0,width,height),new Color(.025f,.105f,.14f,.46f));
+        const float w=402;
+        bool menu=mode==Mode.Menu;
+        bool relay=transportTab==1;
+        bool direct=transportTab==2;
+        string note=message;
+        if(menu && relay && string.IsNullOrEmpty(note) && string.IsNullOrEmpty(Application.cloudProjectId))
+            note="Relay를 사용하려면 Unity Cloud 프로젝트를 연결하세요.";
+        float noteHeight=string.IsNullOrEmpty(note)?0:62;
+        float h=menu?368+noteHeight:201;
+        float x=(width-w)*.5f,y=(height-h)*.5f;
+        var panel=new Rect(x,y,w,h);
+        PartyMenuUI.Fill(new Rect(x+3,y+6,w,h),ink,21);
+        PartyMenuUI.Fill(panel,paper,20);
+        PartyMenuUI.Fill(new Rect(x,y,w,76),ink,20);
+        PartyMenuUI.Fill(new Rect(x,y+53,w,23),ink);
+        PartyMenuUI.ModeIcon(new Rect(x+23,y+22,32,32),1,PartyMenuUI.Gold);
+        UI.Text(new Rect(x+66,y+10,210,56),"친구와 대전",28,paper,true,TextAnchor.MiddleLeft);
+        PartyMenuUI.Fill(new Rect(x+w-89,y+24,66,29),PartyMenuUI.Teal,13);
+        UI.Text(new Rect(x+w-89,y+24,66,29),"2–4인",16,paper,true);
+        float left=x+22,inner=w-44;
+        if(menu){
+            float tabWidth=inner/3;
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+            int firstTab=0;
+#else
+            int firstTab=1;
+            if(transportTab==0)transportTab=1;
+            tabWidth=inner/2;relay=transportTab==1;
+#endif
+            for(int i=firstTab;i<3;i++){
+                var r=new Rect(left+(i-firstTab)*tabWidth,y+91,tabWidth-4,33);
+                bool selected=transportTab==i;
+                if(UI.Button(r,i==0?"Steam":i==1?"Relay":"직접 연결",selected?PartyMenuUI.Teal:mint,selected?paper:ink,15,MenuTone.Focus)){
+                    transportTab=i;message="";GUI.FocusControl(null);return;
+                }
+            }
+            if(UI.Button(new Rect(left,y+143,inner,45),"방 만들기",PartyMenuUI.Gold,ink,19)){
+                ConnectRoom(true);return;
+            }
+            PartyMenuUI.Fill(new Rect(left,y+208,inner,1),new Color32(176,199,185,255));
+            UI.Text(new Rect(left,y+220,inner,25),direct?"방장의 IP 주소":relay?"Relay 초대 코드":"Steam 방 코드",16,ink,true,TextAnchor.MiddleLeft);
+            var field=new Rect(left,y+250,inner-95,40);
+            string value=direct?address:relay?code:steamCode;
+            value=UI.Input(field,value,direct?64:relay?12:40);
+            if(direct)address=value;else if(relay)code=value;else steamCode=value;
+            if(UI.Button(new Rect(field.xMax+9,field.y,86,40),"참가",PartyMenuUI.Teal,paper,17,MenuTone.Confirm,!string.IsNullOrWhiteSpace(value))){
+                ConnectRoom(false);return;
+            }
+            if(noteHeight>0){
+                var style=new GUIStyle(GUI.skin.label){wordWrap=true,fontSize=14,alignment=TextAnchor.MiddleLeft};
+                style.normal.textColor=ink;
+                GUI.Label(new Rect(left,y+300,inner,noteHeight),note,style);
+            }
+        }else UI.Text(new Rect(left,y+88,inner,45),"방에 연결하는 중…",20,ink,true);
+        if(UI.Button(new Rect(left,y+h-51,110,32),"돌아가기",mint,ink,15,MenuTone.Back))Leave();
+    }
+
+    void ConnectRoom(bool create){
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+        if(transportTab==0){SteamRoom(create);return;}
+#endif
+        if(transportTab==1){OnlineRoom(create);return;}
+        if(create)HostRoom();else JoinRoom(address);
+    }
+
     void DrawRoom(float width,float height){
-        roomTitle ??= new GUIStyle(GUI.skin.label){fontSize=26,fontStyle=FontStyle.Bold,alignment=TextAnchor.MiddleCenter};
-        seatName ??= new GUIStyle(GUI.skin.label){fontSize=16,fontStyle=FontStyle.Bold,alignment=TextAnchor.MiddleCenter,clipping=TextClipping.Clip,wordWrap=false};
-        seatRole ??= new GUIStyle(GUI.skin.label){alignment=TextAnchor.MiddleCenter};
-        GUI.Label(new Rect(0,height*.09f,width,42),practice?"봇 연습 대기실":"탐험대 대기실",roomTitle);
-        GUI.Label(new Rect(0,height*.09f+43,width,24),$"참가자   {count} / {Capacity}",seatRole);
+        var ink=PartyMenuUI.Navy;var paper=PartyMenuUI.Paper;var mint=PartyMenuUI.Mint;
+        float middle=width*.5f;
+        float headerWidth=Mathf.Min(530,width-30);
+        var header=new Rect(middle-headerWidth/2,18,headerWidth,57);
+        PartyMenuUI.Fill(header,ink,17);
+        UI.Text(new Rect(header.x+20,header.y,headerWidth-155,57),practice?"봇 연습 대기실":"친구 대전 대기실",26,paper,true,TextAnchor.MiddleLeft);
+        var countBox=new Rect(header.xMax-114,header.y+13,98,31);
+        PartyMenuUI.Fill(countBox,PartyMenuUI.Teal,12);
+        UI.Text(countBox,$"참가  {count} / {Capacity}",15,paper,true);
         if(host&&!practice){
-            float box=Mathf.Min(width-24,420),x=(width-box)/2,y=height*.09f+73;
-            GUI.Label(new Rect(x,y,80,26),online?"초대 코드":"직접 연결 IP",seatRole);
-            GUI.TextField(new Rect(x+82,y,box-144,26),invite);
-            if(GUI.Button(new Rect(x+box-58,y,58,26),"복사"))GUIUtility.systemCopyBuffer=invite;
+            var strip=new Rect(middle-headerWidth/2,84,headerWidth,35);
+            PartyMenuUI.Fill(strip,paper,9);
+            UI.Text(new Rect(strip.x+6,strip.y,92,35),online?"초대 코드":"방장 IP",14,ink,true);
+            UI.Input(new Rect(strip.x+99,strip.y+2,strip.width-172,31),invite,Mathf.Max(128,invite.Length));
+            if(UI.Button(new Rect(strip.xMax-64,strip.y,64,32),"복사",mint,ink,14))GUIUtility.systemCopyBuffer=invite;
         }
-        float span=Mathf.Abs(game.LobbySeatX(1)-game.LobbySeatX(0))*width*.98f;
+        float span=Mathf.Min(195,Mathf.Abs(game.LobbySeatX(1)-game.LobbySeatX(0))*width-9);
+        float y=height*.59f;
+        float footer=height-52;
+        float cardHeight=Mathf.Min(169,footer-y-12);
         for(int i=0;i<Capacity;i++){
             float x=game.LobbySeatX(i)*width;
-            float y=Mathf.Min(height*.66f,height-218);
-            GUI.Label(new Rect(x-span/2,y,span,22),i<count?$"{i+1}P{(i==0?" · 방장":"")}{(i==Slot?" · 나":"")}":$"{i+1}P",seatRole);
-            var name=i<count?roster[i].Label(i):"빈자리";
-            GUI.Label(new Rect(x-span/2,y+22,span,26),name,seatName);
-            if(i>0&&i<count)GUI.Label(new Rect(x-span/2,y-23,span,22),IsBot(i)?"봇 · 준비 완료":IsSeatReady(i)?"준비 완료":"준비 전",seatRole);
-            DrawBotSeat(i,x,y+52,span);
+            bool occupied=i<count, bot=IsBot(i);
+            var card=new Rect(x-span/2,y,span,cardHeight);
+            PartyMenuUI.Fill(card,occupied?paper:mint,13);
+            var ribbon=new Rect(card.x+9,y+9,span-18,25);
+            PartyMenuUI.Fill(ribbon,occupied?(i==0?PartyMenuUI.Gold:PartyMenuUI.Teal):new Color32(174,209,198,255),8);
+            var role=i==0?"방장":bot?"봇 · 준비 완료":occupied?(IsSeatReady(i)?"준비 완료":"준비 전"):"빈자리";
+            UI.Text(ribbon,$"{i+1}P  ·  {role}",13,occupied&&i>0?paper:ink,true);
+            string name=occupied?roster[i].Label(i):(practice?"봇 대기석":"참가 대기 중");
+            UI.Text(new Rect(card.x+5,y+36,span-10,30),name,18,ink,true);
+            if(occupied && !bot)
+                UI.Text(new Rect(card.x+5,y+69,span-10,23),i==Slot?"내 캐릭터":"친구",14,PartyMenuUI.Muted);
+            DrawBotSeat(i,x,y+68,span);
         }
-        float footer=height-60;
-        if(host){
-            bool previous=GUI.enabled;
-            GUI.enabled=previous&&CanStart;
-            if(GUI.Button(new Rect(width/2-140,footer,174,36),count<2?(practice?"봇을 추가하세요":"친구를 기다리는 중"):CanStart?"게임 시작":"준비를 기다리는 중"))StartMatch();
-            GUI.enabled=previous;
-        }else if(GUI.Button(new Rect(width/2-140,footer,174,36),requestedReady?"준비 취소":"준비"))SetReady(!requestedReady);
-        if(GUI.Button(new Rect(width/2+42,footer,98,36),"방 나가기"))Leave();
+        bool canAct=!host||CanStart;
+        string action=host?(CanStart?"게임 시작":count<2?(practice?"봇을 추가하세요":"친구 대기 중"):"준비 대기 중"):(requestedReady?"준비 취소":"준비");
+        if(UI.Button(new Rect(middle-151,footer,184,36),action,PartyMenuUI.Gold,ink,18,MenuTone.Confirm,canAct)){
+            if(host)StartMatch();else SetReady(!requestedReady);
+        }
+        if(UI.Button(new Rect(middle+45,footer,106,36),"방 나가기",ink,paper,15,MenuTone.Back))Leave();
     }
 }

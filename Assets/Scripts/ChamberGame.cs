@@ -76,6 +76,7 @@ public sealed partial class ChamberGame : MonoBehaviour
     int localDuelSlot;
     ChamberArrival arrival;
     ChamberTitleScreen titleScreen;
+    internal PartyMenuUI MenuUI { get; private set; }
     ChamberAudio sound;
     DeathFocus deathFocus;
     float transitionTime;
@@ -146,6 +147,7 @@ public sealed partial class ChamberGame : MonoBehaviour
             var feet=i==0?explorer:Instantiate(explorer,explorer.parent);
             feet.name=$"{i+1}P explorer";players[i]=new ChamberRunner(feet);
         }
+        MenuUI=new PartyMenuUI(gameObject);
         lan=new ChamberLan(this);ApplyProfiles();
         arrow=new ArrowVolley(gameObject);
         potion=gameObject.AddComponent<PotionVolley>();
@@ -985,7 +987,7 @@ public sealed partial class ChamberGame : MonoBehaviour
     }
     void OnDisable() => startText?.Hide();
 
-    void OnDestroy() { titleScreen?.Dispose();startText?.Dispose();lan?.Dispose();tide?.Dispose();lava?.Dispose(); if (poisonMaterial) Destroy(poisonMaterial);if(groundCrackMaterial)Destroy(groundCrackMaterial); }
+    void OnDestroy() { MenuUI?.Dispose();titleScreen?.Dispose();startText?.Dispose();lan?.Dispose();tide?.Dispose();lava?.Dispose(); if (poisonMaterial) Destroy(poisonMaterial);if(groundCrackMaterial)Destroy(groundCrackMaterial); }
 
     void OnGUI()
     {
@@ -993,7 +995,7 @@ public sealed partial class ChamberGame : MonoBehaviour
         try{
             if(phase==Phase.Title){
                 if(lan.Busy || lan.Editing){
-                    float scale=Mathf.Clamp(Screen.height/640f,.65f,1.6f);
+                    float scale=Mathf.Min(Screen.height/660f,Screen.width/680f);
                     GUI.matrix=Matrix4x4.Scale(Vector3.one*scale);
                     lan.Draw(Screen.width/scale,Screen.height/scale);
                 }else{

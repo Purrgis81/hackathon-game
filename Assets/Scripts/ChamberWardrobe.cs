@@ -8,6 +8,7 @@ internal sealed class ChamberWardrobe
         Paper=new Color32(255,250,235,255), Mint=new Color32(199,232,218,255),
         Muted=new Color32(74,98,96,255), Gold=new Color32(255,210,103,255);
     static readonly string[] Requirements={"봇 대전 1회 완료","멀티플레이 1회 우승"};
+    readonly PartyMenuUI ui;
     readonly GameObject stage;
     readonly Transform turntable;
     readonly ChamberAnimalAvatar avatar;
@@ -22,8 +23,9 @@ internal sealed class ChamberWardrobe
     Font font;
     public ChamberProfile Profile=>ChamberProfile.Create(draft.Name,draft.Swatch,draft.Animal);
 
-    public ChamberWardrobe(Transform parent)
+    public ChamberWardrobe(Transform parent,PartyMenuUI ui)
     {
+        this.ui=ui;
         stage=new GameObject("Character fitting room");
         stage.transform.SetParent(parent,false);
         stage.transform.position=new Vector3(-2400,0,0);
@@ -90,7 +92,7 @@ internal sealed class ChamberWardrobe
             field=new GUIStyle(GUI.skin.textField){font=font,fontSize=17,padding=new RectOffset(9,6,4,3)};
         }
         if(Event.current.type==EventType.KeyDown && Event.current.keyCode==KeyCode.Escape){
-            Event.current.Use();return Action.Cancel;
+            Event.current.Use();ui.Sound(MenuTone.Back);return Action.Cancel;
         }
         Box(new Rect(0,0,Width,Height),Paper,24);
         Label(new Rect(28,15,340,48),"캐릭터 설정",32,Ink);
@@ -129,7 +131,7 @@ internal sealed class ChamberWardrobe
             var preset=new ChamberProfile{Swatch=i};
             Box(rect,draft.Swatch==i?Ink:new Color(.82f,.84f,.78f),16);
             Box(new Rect(rect.x+3,rect.y+3,26,26),preset.Tint(0),13);
-            if(GUI.Button(rect,GUIContent.none,GUIStyle.none))SetPreset(i);
+            if(ui.Hit(rect))SetPreset(i);
         }
         var patch=new Rect(411,214,462,74);
         var strip=new Rect(411,301,462,17);
@@ -185,7 +187,7 @@ internal sealed class ChamberWardrobe
             }
             Label(new Rect(x+39,rect.y+4,372,23),$"치장 슬롯 {i+1}  ·  "+(unlocked?"해금 미리보기":"잠김"),15,Ink);
             Label(new Rect(x+39,rect.y+25,372,23),"조건 예시   "+Requirements[i],14,Muted);
-            if(GUI.Button(rect,GUIContent.none,GUIStyle.none))trialUnlocked[i]=!unlocked;
+            if(ui.Hit(rect))trialUnlocked[i]=!unlocked;
         }
     }
     static void Marker(float x,float y,Color color){
@@ -201,6 +203,6 @@ internal sealed class ChamberWardrobe
         text.normal.textColor=text.hover.textColor=color;GUI.Label(r,caption,text);
     }
     bool Button(Rect r,string caption,Color fill,Color ink){
-        Box(r,fill,14);Label(r,caption,17,ink,true);return GUI.Button(r,GUIContent.none,GUIStyle.none);
+        Box(r,fill,14);Label(r,caption,17,ink,true);return ui.Hit(r,caption=="취소"?MenuTone.Back:MenuTone.Confirm);
     }
 }
