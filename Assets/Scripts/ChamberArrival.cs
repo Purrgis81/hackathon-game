@@ -122,6 +122,8 @@ public sealed class ChamberArrival : MonoBehaviour
 
     void OnDestroy()
     {
+        if (mask) Destroy(mask);
+        if (plume) Destroy(plume.gameObject);
         if (eyelids) Destroy(eyelids);
         if (dustInk) Destroy(dustInk);
     }

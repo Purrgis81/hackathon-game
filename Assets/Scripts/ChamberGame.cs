@@ -575,7 +575,15 @@ public sealed partial class ChamberGame : MonoBehaviour
         }
         System.Array.Clear(wins,0,wins.Length);ApplyProfiles();ResetBoard();sound.ResumeMusic();BeginCountdown();
     }
-    public void EndDuel(){
+    public void EndDuel()=>ReturnToTitle();
+
+    void ReturnToTitle(){
+        if(arrival){Destroy(arrival);arrival=null;}
+        startText?.Hide();
+        transitionTime=0;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        debugOpen=false;
+#endif
         System.Array.Clear(bots,0,bots.Length);
         participants=1;priority=0;ApplyProfiles();ResetBoard();deathFocus.Reveal(1);OpenTitle(true);sound.ResumeMusic();
     }
@@ -652,6 +660,11 @@ public sealed partial class ChamberGame : MonoBehaviour
         if(lan.Busy){
             lan.Poll(Time.unscaledDeltaTime,ReadDirection());
             if(lan.ResultsReady)ShowMatchResults();
+            return;
+        }
+        if(!duel && Input.GetKeyDown(KeyCode.Escape)){
+            MenuUI.Sound(MenuTone.Back);
+            ReturnToTitle();
             return;
         }
         if(MatchFinished)return;
